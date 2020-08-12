@@ -17,6 +17,7 @@
 #' @return Returns a data.frame with statistics of your data
 #'
 #' @importFrom handy cbindList
+#' @importFrom gtools mixedsort
 #'
 #' @export
 #'
