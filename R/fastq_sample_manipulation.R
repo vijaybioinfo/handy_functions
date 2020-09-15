@@ -90,3 +90,45 @@ fastq_merge_commands <- function(
   # names(summaries) <- unname(unlist(x))
   if(isTRUE(cmd_only)) unlist(summaries) else return(summaries)
 }
+
+fastq_group_names <- function(snames){
+  y <- if(is.list(snames)) snames else strsplit(x = snames, split = "_")
+  for(i in 1:max(sapply(y, length))) print(table(sapply(y, '[', i), useNA = 'always'))
+}
+
+fastq_fix_names <- function(x, str_replacements = NULL, sreplace = NULL, ...){
+  newnames <- gsub("A", "A", x)
+  # Modifications
+  for(i in str_replacements) newnames <- gsub(i[1], i[2], newnames, ...)
+  # Replacing
+  if(!is.null(sreplace)){
+    tvar <- newnames %in% names(sreplace)
+    if(sum(tvar) != length(sreplace)) warning("Check the very special cases")
+    cat(c(newnames[tvar], sum(tvar)), sep = "\n")
+    newnames[tvar] <- unname(sreplace[newnames[tvar]])
+  }
+
+  newnames
+}
+
+fastq_make_metadata <- function(
+  snames,
+  original_names = NULL,
+  name2column
+){
+  snames <- if(is.list(snames)) snames else strsplit(x = snames, split = "_")
+  complete_names <- sapply(snames, paste0, collapse = "_")
+  mytab <- data.frame(
+    Sample_ID = if(is.null(original_names)) complete_names else original_names
+  )
+  if(!is.null(original_names)) mytab$Corrected_Sample_Name <- complete_names
+  addtab <- sapply(X = name2column, FUN = function(x){
+    y <- if(length(x) > 1){
+      sapply(lapply(snames, '[', x), paste0, collapse = "-")
+    }else{
+      sapply(snames, '[', x)
+    }
+  })
+  mytab <- cbind(mytab, addtab)
+  return(mytab)
+}
