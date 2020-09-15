@@ -407,6 +407,9 @@ getsubset <- function(
 ){
   df <- remove.factors(df)
   if(is.null(x)) return(rownames(df))
+  if(!is.null(x[['op']])){
+    op = x[['op']]; x <- x[names(x) != "op"]
+  }
   x <- translist(x)
   # if(is.null(x)) x <- c(colnames(df)[1], unique(df[, 1]))
   if(length(x) == 1 && class(x) != 'list') x <- c(x, unique(df[, 1]))

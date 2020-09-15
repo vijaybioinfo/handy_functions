@@ -73,13 +73,14 @@ fastq_merge_commands <- function(
       newname <- paste0(rename, newname)
     }
     newname <- paste0(newname, "_", reads, suffix_final)
-    if(length(x) < 10) cat(newname, sep ='\n')
-    if(length(x) < 10) cat(f2merge, sep ='\n')
+    addition <- ifelse(duplicated(newname), " >> ", " > ")
+    # if(length(x) < 10) cat(newname, sep ='\n')
+    # if(length(x) < 10) cat(f2merge, sep ='\n')
     if(length(f2merge) < 3){
       cmds <- paste0('cp ', f2merge, " ", newname)
     }else{
-      addition <- ifelse(duplicated(newname), " >> ", " > ")
-      cmds <- paste0('cat ', mysample, "*", reads, suffix, addition, newname)
+      cmds <- paste0('cat ', f2merge, addition, newname)
+      # cmds <- paste0('cat ', mysample, "*", unique(reads), suffix_final, addition, unique(newname))
     }
     if(isTRUE(cmd_only)) return(cmds)
     list(
@@ -131,4 +132,12 @@ fastq_make_metadata <- function(
   })
   mytab <- cbind(mytab, addtab)
   return(mytab)
+}
+
+fastq_path_swap <- function(subs, stringy){
+  if(!is.list(subs)) subs <- list(subs)
+  for(i in subs){
+    stringy <- gsub(i[1], i[2], stringy)
+  }
+  return(stringy)
 }
