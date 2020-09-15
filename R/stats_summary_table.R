@@ -22,10 +22,10 @@
 #' @export
 #'
 #' @examples
-#' addinfo <- get_stat_report(mat = edata, groups = annot_group)
+#' addinfo <- stats_summary_table(mat = edata, groups = annot_group)
 #'
 
-get_stat_report <- function(
+stats_summary_table <- get_stat_report <- function(
     mat,
     groups = NULL, # named [with mat colnames] vector
     cnames = NULL, # column names
