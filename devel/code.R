@@ -2758,8 +2758,6 @@ get_correct_root_state <- function(cds, cell_phenotype, root_type = NULL){
 }
 
 source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/R/stats_summary_table.R')
-fsource <- c(
-  '/mnt/BioHome/ciro/scripts/functions/myplots_functions.R'
-)
+source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/plotting.R')
 fsource <- fsource[file.exists(fsource)]
 random1234 <- sapply(fsource, source); rm(random1234)
