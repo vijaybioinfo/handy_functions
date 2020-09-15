@@ -4,18 +4,12 @@
 # Handy functions for n-tasks #
 ###############################
 
-# This functions are designed to be use across all the scripts in the single-cell
-# and bulk analyses
+# This functions are designed to be use across all scripts from Vijay's Lab
 # NOTE: highly sensitive, dont change input parameters names so confidently
 
-# cluster_groups_visuals and myplots_functions loaded at the end
-# source('/mnt/BioHome/ciro/scripts/functions/handy_functions.R')
+# source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/code.R')
 
-# Save all data
-save_all <- function(){
-  cat('Saving all data:', getwd(), '\n'); save.image(file = 'all.RData')
-}
-
+# When, for some reason, Ctrl+L stops working
 clr <- function() system("clear")
 
 ## from counts to counts per factor (1M)
@@ -180,7 +174,12 @@ load_packs <- function(
 }
 
 # Present parameters
-present_params <- function(parms, flaggy = NULL, fast_track = FALSE){
+present_params <- function(
+  parms,
+  flaggy = NULL, # Logical vector indicating whethe the parameter is default
+  fast_track = FALSE # Print variable assignments to be copied in case you want
+  # to run the code manually
+){
   cat('Parameters:\n')
   if(is.null(names(parms))) stop('No parameter\'s names in vector\n')
   if(is.null(flaggy) && length(flaggy) == 0){
