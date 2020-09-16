@@ -1,10 +1,10 @@
 #!/usr/bin/R
 
-##########################
-# Seurat handy functions #
-##########################
+##############################
+# Clustering handy functions #
+##############################
 
-# This functions are designed to be help with Seurat object's hanndling
+# This functions are designed to be help with Seurat object's hanndling and continues to expand
 
 get_source_data <- function(
   xpath,
@@ -271,59 +271,3 @@ add_reduction <- function(
   object@reductions[[reduction.name]]@key <- reduction.key
   return(object)
 }
-
-## Loading signatures
-# ## Global ones
-load("/mnt/BioAdHoc/Groups/vd-vijay/vijay_lab/data/signatures.rdata")
-# signature_tab <- vlab_signatures
-# # signature_tab <- read.csv('/home/ciro/simon/info/gsea_lists_extended.csv', stringsAsFactors = FALSE)
-# # fnames = c(
-# #   "~/asthma_pjs/info/trm_suptab2Lung_clarke.csv",
-# #   "/home/ciro/vdv/vfajardo/general_data/cell_type_classification/module_definition/module_signatures/activation/activation_2020-02-24_NoFiltering/ModuleACTIVATIONFeaturesSignatureWithLFCTholds1.txt"
-# # )
-# # fnames = "/home/ciro/large/covid19/results/dgea/CD8T24_R1n2N_sng_15p/comprs/activation/NCVvsCV/signature_genes/selected_genes.csv"
-# fnames = "/home/ciro/covid19/info/signatures_hdm.csv"
-# extra_signatures <- lapply(fnames, readfile, stringsAsFactors = FALSE)
-# extra_signatures <- unlist(extra_signatures, recursive = FALSE)
-# # names(extra_signatures) <- c("nontrm_signature_clarke", "trm_signature_clarke", "tcell_ativation_flu")
-# vlab_signatures <- c(signature_tab, extra_signatures)
-# vlab_signatures <- lapply(vlab_signatures, function(x){ y <- x[x != ""]; y[!is.na(y)] })
-# str(vlab_signatures)
-# save(vlab_signatures, file = "/home/ciro/vdv/vijay_lab/data/signatures.rdata")
-# ddf <- vlist2df(vlab_signatures); ddf[is.na(ddf)] <- ""
-# write.csv(ddf, file = "/home/ciro/vdv/vijay_lab/data/signatures.csv", row.names = FALSE, quote = FALSE)
-# write.table(ddf, file = "/home/ciro/vdv/vijay_lab/data/signatures.txt", row.names = FALSE, quote = FALSE, sep = "\t")
-
-# signaturesl <- read.csv("/home/ciro/covid19/info/tcell_cd8story_signatures.csv", stringsAsFactor = FALSE)
-# signaturesl <- as.list(signaturesl)
-# signaturesl <- signaturesl[!grepl("tcell_cytotoxic_guo|arnon|dixhaust", names(signaturesl))]
-# ## Converting to human
-# signaturesl <- lapply(signaturesl, function(x){ # removing NAs and empty elements
-#   y <- x[!is.na(x)]; gsub("'| ", "", y[y != ""])
-# });
-# str(signaturesl)
-# tem_signatures <- read.csv("/home/ciro/covid19/info/tcell_cd8story_signatures_2020_06_21.csv", stringsAsFactor = FALSE)
-# tem_signatures <- lapply(as.list(tem_signatures), function(x){ # removing NAs and empty elements
-#   y <- x[!is.na(x)]; gsub("'| ", "", y[y != ""])
-# });
-# signatures_cd8covid <- c(tem_signatures, signaturesl)
-# str(signatures_cd8covid)
-# save(signatures_cd8covid, file = "/home/ciro/vdv/vijay_lab/data/signatures_cd8covid.rdata")
-# ddf <- vlist2df(signatures_cd8covid); ddf[is.na(ddf)] <- ""
-# write.csv(ddf, file = "/home/ciro/vdv/vijay_lab/data/signatures_cd8covid.csv", row.names = FALSE, quote = FALSE)
-# write.table(ddf, file = "/home/ciro/vdv/vijay_lab/data/signatures_cd8covid.txt", row.names = FALSE, quote = FALSE, sep = "\t")
-load("/home/ciro/vdv/vijay_lab/data/signatures_cd8covid.rdata")
-
-# ## More signatures from Preethi
-load("/home/ciro/vdv/vijay_lab/data/signatures_tem.rdata")
-# fnames = list.files(path = '/home/ciro/preethi/info/tem_signatures_scrnaseq', pattern = 'txt', full.names = TRUE)
-# mynames <- make_title(gsub("&|,|.txt|genes|from|pathway", "", basename(fnames), ignore.case = TRUE))
-# mynames <- casefold(gsub(" ", "_", mynames))
-# tem_signatures <- suppressWarnings(lapply(fnames, readfile, stringsAsFactors = FALSE))
-# tem_signatures <- unlist(tem_signatures, recursive = FALSE)
-# names(tem_signatures) <- mynames
-# save(tem_signatures, file = "/home/ciro/vdv/vijay_lab/data/signatures_tem.rdata")
-# ddf <- vlist2df(tem_signatures); ddf[is.na(ddf)] <- ""
-# write.csv(ddf, file = "/home/ciro/vdv/vijay_lab/data/signatures_tem.csv", row.names = FALSE, quote = FALSE)
-# write.table(ddf, file = "/home/ciro/vdv/vijay_lab/data/signatures_tem.txt", row.names = FALSE, quote = FALSE, sep = "\t")
-# str(tem_signatures)
