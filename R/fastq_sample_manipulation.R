@@ -141,3 +141,11 @@ fastq_path_swap <- function(subs, stringy){
   }
   return(stringy)
 }
+
+fastq_reorder_checksum <- function(x, sortit = TRUE){
+  w <- unique(sapply(x, function(y){
+    z <- unlist(strsplit(y, " ")); paste0(rev(z[z != ""]), collapse = " ")
+  }))
+  if(sortit) return(sort(w))
+  w
+}
