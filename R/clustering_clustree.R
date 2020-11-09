@@ -8,7 +8,7 @@
 # package
 
 # .libPaths('~/R/newer_packs_library/3.5')
-source('/mnt/BioHome/ciro/scripts/functions/handy_functions.R')
+source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/code.R')
 suppressPackageStartupMessages(library(clustree))
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(Seurat))

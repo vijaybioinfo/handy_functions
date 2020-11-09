@@ -18,6 +18,7 @@ qc_violin <- function(
   if(!is.factor(mydat[, xax])){
     mydat[, xax] <- factor(mydat[, xax])
   }
+  mydat <- mydat[-which.max(mydat[, yax]), ] # when the violin is squashed
 
   if(!any(is.null(c(lb_filt, hb_filt)))){
     mydat$filter <- mydat[, yax] >= lb_filt[yax] & mydat[, yax] <= hb_filt[yax]
@@ -40,7 +41,7 @@ qc_violin <- function(
       geom_text(
         aes_string(label = 'pct', y = ymax), # position = position_dodge(0.9),
         nudge_x = ifelse(nlevels(mydat[, xax]) < 3, 0.3, 0),
-        vjust = 1.6, angle = 45,
+        vjust = 1.6, angle = 45
       )
   }
 }
@@ -53,8 +54,8 @@ GenePlotc <- function(
 ){
   tvar <- colnames(x)
   void <- FeatureScatter(object = object, feature1 = tvar[1], feature2 = tvar[2])
-  if(log_or_not(object@meta.data[, tvar[1]])) void <- void + scale_x_log10()
-  if(log_or_not(object@meta.data[, tvar[2]])) void <- void + scale_y_log10()
+  if(diff(range(object@meta.data[, tvar[1]])) > maxdiff) void <- void + scale_x_log10()
+  if(diff(range(object@meta.data[, tvar[2]])) > maxdiff) void <- void + scale_y_log10()
   for(i in seq(1, nrow(x), 2)){
     # if(vrs < 3){ rect(x[i, 1], x[i, 2], x[i + 1, 1], x[i + 1, 2], border = ifelse(i + 1 == nrow(x), 'red', 'black')); next }
     void <- void + annotate("rect", xmin = x[i, 1], ymin = x[i, 2], xmax = x[i + 1, 1], ymax = x[i + 1, 2],
@@ -93,40 +94,17 @@ GenePlotc <- function(
 feature_scatter <- function(
   object,
   variables,
-  thresh = NULL, #
-  simple = TRUE,
+  thresh = NULL,
   verbose = FALSE
 ){
   if(casefold(class(object)) == "seurat"){ object <- FetchData(object, vars = variables); gc() }
-  if(!isTRUE(simple) && (length(thresh) == length(variables))){
-    tvar <- thresh[3, head(variables, 3)]
-    tmp <- apply(tvar, 2, function(x) all(is.infinite(x)) )
-    tvar <- tvar[tmp, apply(tvar, 2, function(x) all(is.infinite(x)) )]
-    p <- get_densities(
-      mat = t(object[, variables]),
-      genes = head(variables, 3),
-      log2t = TRUE,
-      cuof = tvar,
-      pdist = 0, # distance for percentages
-      even_axis = FALSE,
-      ptsize = 1,
-      return_plot = TRUE,
-      metas = object,
-      v = verbose
-    )$scatter
-  }else{
-    p <- plot_corr(
-      df = object, var1 = variables[1],  var2 = variables[2], addvar = variables[3],
-      log2t = 'auto', return_plot = TRUE, v = verbose
-    )
-  }
+  p <- plot_corr(
+    df = object, var1 = variables[1],  var2 = variables[2], addvar = variables[3],
+    add_line = FALSE, log2t = 'auto', return_plot = TRUE, v = verbose
+  )
   p <- p + theme_minimal();
   if(!is.null(thresh)){ # when no threshold is given
     if(verbose) cat("Adding boundaries\n")
-    # tvar <- sapply(object[, variables[1:2]], function(x) log_or_not(x) )
-    # for(coly in names(tvar[tvar])){ # log it if necessary
-    #   thresh[, coly] <- ifelse(is.finite(thresh[, coly]) | thresh[, coly] > 0, log10(thresh[, coly]))
-    # }
     for(i in seq(1, nrow(thresh), 2)){
       p <- p + annotate(geom = "rect",
         xmin = thresh[i, 1], ymin = thresh[i, 2], xmax = thresh[i + 1, 1], ymax = thresh[i + 1, 2],
@@ -200,151 +178,20 @@ VariableFeaturePlotp <- function(
   return(plot)
 }
 
-## barplot
-plot_pct <- function(
-  x,
-  groups = c(1, 2), # proportion of 1 per 2
-  orderby = FALSE, # group in groups[1] to order by
-  normalise = FALSE, # think carefully which variables need it
-  print_ptables = FALSE,
-  type = c("bar", "pie", "donut"),
-  return_table = FALSE,
-  v = FALSE
-){
-  require(dplyr)
-  type <- match.arg(type)
-  cats <- table(x[, groups[1]])
-  ddf <- ddf2 <- table(x[, groups])
-  if(v) cat("Type of plot:", type, "\n")
-  if(v) cat("Proportions of:", groups[1], "\n")
-  if(v) cat("Per:", groups[2], "\n")
-  if(isTRUE(print_ptables)) print(ddf2)
-  if(isTRUE(normalise)) normalise <- 1
-  if(is.numeric(normalise)){
-    if(v) cat("Normalising by", groups[normalise], "\n")
-    ddf2 <- (ddf2 * (min(table(x[, groups[normalise]])) / rowSums(ddf2))) # factorising/normalising
-  }
-  if(isTRUE(print_ptables)) print(ddf2)
-  prop_table <- prop.table(ddf2, 2); if(isTRUE(print_ptables)) print(prop_table)
-  mylevels <- if(is.numeric(orderby) || all(orderby %in% names(cats))){
-    direct = FALSE
-    orderby <- if(is.numeric(orderby)){
-      direct = any(orderby > 0)
-      names(cats[abs(orderby)])
-    }else{
-      orderby
-    }
-    if(v) cat("Sorting by", orderby, "\n")
-    tvar <- if(length(orderby) > 1) colSums(prop_table[orderby, ]) else prop_table[orderby, ]
-    names(sort(tvar, decreasing = direct))
-  }else{ NULL }
-  prop_table <- round(as.data.frame.matrix(rbind(ddf[, colnames(prop_table)], prop_table)), 2)
-  prop_table <- cbind(
-    Group = rep(rownames(ddf2), times = 2),
-    Type = rep(c("Count", "Percentage"), each = nrow(ddf2)),
-    prop_table
+## Visualise fit
+mean_var <- function(object){
+  hvf.info <- HVFInfo(object, selection.method = "vst")
+  not.const <- hvf.info$variance > 0
+  fit <- loess(
+     formula = log10(x = variance) ~ log10(x = mean),
+     data = hvf.info[not.const, ],
+     span = 0.3
   )
-  rownames(prop_table) <- NULL
-
-  ddf2 <- reshape2::melt(ddf2)
-  ddf2$fill_group <- if(!is.factor(x[, groups[1]])) factormix(ddf2[, 1]) else factor(ddf2[, 1], levels(x[, groups[1]]))
-  ddf2$in_group <- if(!is.null(mylevels)){
-    factor(ddf2[, 2], mylevels)
-  }else if(!is.factor(x[, groups[2]])){
-    factormix(ddf2[, 2])
-  }else{
-    factor(ddf2[, 2], levels(x[, groups[2]]))
-  }
-  ddf2 <- ddf2[, -c(1:2)]
-  if(type == "bar"){
-    p <- ggplot(data = ddf2, aes(x = in_group, y = value, fill = fill_group)) +
-      geom_bar(stat = "identity", position = "fill") +
-      scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-      labs(fill = make_title(groups[1]), y = "Percentage")
-  }else if(type == "pie"){
-    p <- ggplot(data = ddf2, aes(x = "", y = value)) +
-    geom_bar(aes(fill = fill_group), stat = "identity", position = "fill") +
-    coord_polar("y", start=0) + labs(x = NULL, y = NULL) + scale_y_reverse() +
-    facet_wrap(~in_group, ncol = fitgrid(unique(ddf2$in_group))[2])
-  }else{
-    prop_table <- thisdf <- ddf2 %>% group_by(in_group) %>%
-      mutate(
-        fraction = value / sum(value),
-        ymax = cumsum(fraction),# top of each rectangle
-        ymin = c(0, head(ymax, n = -1)), # bottom of each rectangle
-        position = ymax - fraction / 2,
-        Percentage = paste0(round(fraction * 100, 1), "%")
-      )
-    p <- ggplot(thisdf, aes(ymax = ymax, ymin = ymin, xmax = 4, xmin = 3, fill = fill_group)) +
-      geom_rect() +
-      coord_polar(theta = "y") + # Try to remove that to understand how the chart is built initially
-      facet_wrap(~in_group, ncol = fitgrid(unique(ddf2$in_group))[2]) +
-      xlim(c(2, 4))
-  }
-  p <- p + theme_minimal() + labs(x=NULL)
-  if(isTRUE(return_table)) return(list(plot = p, table = prop_table))
-  return(p)
-}
-
-seu_heatmap <- function(
-  object,
-  annoc = NULL,
-  rnames = NULL,
-  cnames = NULL,
-  orderby = NULL,
-  seu_scale = TRUE,
-  feature_order = FALSE,
-  regress = c('nCount_RNA', 'percent.mt'),
-  v = FALSE
-){
-  if(is.null(annoc)) annoc <- object@meta.data
-  if(is.null(rnames)) rnames <- rownames(object@assays$RNA@scale.data)
-  if(is.null(cnames)) cnames <- colnames(annoc)
-  cnames <- getfound(cnames, rownames(annoc), v = v)
-  cnames <- getfound(cnames, colnames(object), v = v)
-  orderby <- orderby[1]
-  if(v){
-    cat("Features:", commas(rnames), "\n")
-    cat("Cells:", commas(cnames), "\n")
-    cat("Variables:", commas(colnames(annoc)), "\n")
-  }
-  annoc <- annoc[cnames, ]
-  object <- object[, cnames]
-  annoc <- annoc[order(annoc[, orderby]), ]
-  tvar <- which(annoc[, orderby] == min(abs(annoc[, orderby])))
-  if(length(tvar) != 0) tvar <- 1:nrow(annoc) %in% (tvar - 2):(tvar + 2)
-  if(is.numeric(annoc[, orderby]) && length(tvar) != 0) annoc$Threshold = ifelse(tvar, "0", " ")
-  anncolist <- lapply(annoc[, sapply(annoc, is.character), drop = FALSE], function(x){
-    v2cols(select = x, fw = "gg", v = v)
-  })
-  if(is.numeric(annoc[, orderby]) && length(tvar) != 0) anncolist$Threshold <- c(" " = "#FFFFFF", "0" = "red")
-  anncolist <- rev(anncolist)
-  regress <- regress[regress %in% colnames(object@meta.data)]
-  if(length(regress) == 0) regress <- NULL
-  object <- object[rnames, rownames(annoc)]
-  if(isTRUE(seu_scale) && casefold(class(object)) == 'seurat'){
-    object <- ScaleData(
-      object = object, features = rnames,
-      vars.to.regress = regress,
-      verbose = v
-    )
-    mat_to_plot <- object@assays$RNA@scale.data
-  }else if(isTRUE(seu_scale)){
-    if(v) cat("Scaling\n")
-    if(casefold(class(object)) == 'seurat'){
-      mat_to_plot <- as.matrix(expm1(object@assays$RNA@data) * 100)
-    }
-    mat_to_plot <- t(scale(t(mat_to_plot)))
-  }
-  if(isTRUE(feature_order) && casefold(class(object)) == 'seurat'){
-    object <- RunPCA(object = object, npcs = 5, verbose = v)
-    thesegenes <- rev(names(sort(Loadings(object, "pca")[, 1], decreasing = FALSE)))
-  }else{ thesegenes <- rnames }
-  mat_to_plot <- as.matrix(mat_to_plot[thesegenes, rownames(annoc)])
-  topz <- max(c(min(abs(c(range(mat_to_plot), 2))), 1))
-  mat_to_plot[mat_to_plot > topz] <- topz; mat_to_plot[mat_to_plot < (-topz)] <- -topz;
-  range(mat_to_plot)
-  NMF::aheatmap(mat_to_plot, annCol = annoc, annColors = anncolist,
-    scale = 'none', Rowv = NA, Colv = NA, distfun = 'spearman', subsetCol = NULL,
-    col = rev(colorRampPalette(colors = c('yellow', 'black', 'blue'))(7)))
+  hvf.info$variance.expected[not.const] <- 10 ^ fit$fitted
+  not.const <- sample(which(not.const), min(c(100, sum(not.const) * 0.01)))
+  p <- ggplot(hvf.info, aes(log10(mean), log10(variance))) + geom_point(alpha = 0.6) +
+    geom_smooth(se = FALSE, color = 'red', method = "loess") +
+    geom_point(data = hvf.info[not.const, ], aes(log10(mean), log10(variance.expected)), alpha = 0.6, size = 0.1, color = "green") +
+    labs(title = 'Global mean-variance LOESS')
+  return(p )
 }

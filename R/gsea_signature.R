@@ -6,36 +6,43 @@
 
 # This script generates signature scores
 
-source('/mnt/BioHome/ciro/scripts/functions/handy_functions.R')
-if(!exists("vlab_signatures")) source('/mnt/BioHome/ciro/scripts/seurat/utilities.R')
-# source('/mnt/BioHome/ciro/scripts/seurat/plotting.R')
+# "devel/utilities.R", "devel/plots.R", "R/stats_summary_table.R", "clustering_utilities.R"
 
 clean_feature_list <- function(
   mat,
   features, # list of genes
-  grps = NULL,
-  filterby = NA, # it can also be percentage (p) or mean (mn) [and value] (eg. p2, default is 0)
+  groups = NULL,
+  filterby = 'p~0', # Moment~[value] (default is p~0) as indicated in `stats_summary_table`. You can include the group name to filter by, p~0~group1.
   return_stats = FALSE,
   v = FALSE
 ){
-  tvar <- gsub("[0-9]{1,}", "", filterby); tvar[2] <- gsub("[a-z]", "", filterby); if(tvar[2] == "") tvar[2] <- 0
-  str(tvar)
-  if(is.null(grps)){ grps <- rep("SingleCell", ncol(mycells)); names(grps) <- colnames(mycells) }
-  mygenes <- unique(unlist(features)); mygenes <- getfound(mygenes, rownames(mat), v = v)
-  void <- data.frame(get_stat_report(
+  filterby <- unlist(strsplit(x = filterby, split = "~"))
+  if(is.null(groups)){
+    groups <- rep("SingleCell", ncol(mat)); names(groups) <- colnames(mat)
+    if(is.na(filterby[3])) filterby[3] <- "SingleCell"
+  }
+  if(is.na(filterby[3])){
+    filterby[3] <- unique(groups)[1]
+    warning("You may want to specify the group. Taking ", filterby[3], ".")
+  }
+  mygenes <- unique(unlist(features)); mygenes <- mygenes[mygenes %in% rownames(mat)]
+  void <- stats_summary_table(
     mat = as.matrix(mat[mygenes, ]),
-    groups = grps,
-    moments = tvar[1],
+    groups = groups,
+    moments = filterby[1],
     v = v
-  ), row.names = mygenes); if(v) print(summary(void))
-  passed <- rownames(void)[void[, 1] > as.numeric(tvar[2])]
+  ); if(v) print(summary(void))
+  passed <- rownames(void)[void[, paste0(filterby[3], moments[filterby[1]])] > as.numeric(filterby[2])]
   if(v) str(features)
   features <- sapply(features, function(x) x[x %in% passed], simplify = FALSE)
   if(v) str(features)
   if(isTRUE(return_stats)) list(stats = void, list = features) else return(features)
 }
 
-
+# Previous colours
+# c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','#EE0000','#b30000', '#670000')
+# c("#fffeee", "#ffe080", "#ffc100", "#ff4d00", "#ff0000", "#EE0000", "#a10000", "#670000")
+# c("#fffffa", "#fffeee", "#ffe080", "#ffc100", "#ff0000", "#EE0000", "#a10000", "#670000")
 signature_scoring <- function(
   object,
   prefix = NULL,
@@ -43,7 +50,7 @@ signature_scoring <- function(
   group = FALSE, # group signatures with same name [and description] (NAME_description_source)
   confounders = "RNA.*res",
   reductions = list(pca = c('PC_1', 'PC_2'), tsne = c('tSNE_1', 'tSNE_2'), umap = c('UMAP_1', 'UMAP_2')),
-  couls = c("#fffeee", "#ffe080", "#ffc100", "#ff4d00", "#ff0000", "#EE0000", "#a10000", "#670000"),
+  couls = c("#fffffa", "#fffeee", "#ffe080", "#ffc100", "#ff0000", "#EE0000", "#a10000", "#670000"),
   v = FALSE
 ){
   suppressPackageStartupMessages(library(Seurat))
@@ -52,16 +59,14 @@ signature_scoring <- function(
   str_safe_remove <- function(x, word = "random123") gsub("_{1,}", "_", gsub(word, "", x))
 
   if(v) cat("-- Signature scoring --\n")
-  if(!grepl("signatures", prefix)) prefix <- dircheck(paste0(prefix, 'signatures'))
-  if(!dir.exists(prefix) && grepl("\\/$", prefix)) dir.create(prefix, recursive = TRUE)
+  prefix <- dircheck(prefix)
   if(v) cat("Output:", prefix, "\n")
-  # initpath <- getwd()
-  # setwdc(prefix, showWarnings = FALSE)
+
   if(any(!confounders %in% colnames(object@meta.data))){
-    confounders <- get_grouping_cols(metadat = object@meta.data, ckeep = confounders, maxn = 56, v = v)
+    confounders <- extract_grouping_cols(metadat = object@meta.data, ckeep = confounders, maxn = 56, v = v)
   };
   confounders <- confounders[confounders %in% colnames(object@meta.data)]
-  if(v) cat("Confounders", commas(confounders), "\n");
+  if(v) cat("Confounders", show_commas(confounders), "\n");
   Idents(object) <- 'orig.ident'
 
   reductions <- reductions[names(reductions) %in% names(object@reductions)]
@@ -84,12 +89,11 @@ signature_scoring <- function(
       }
       tvar <- c(gsub("orig.", "", sapply(signature_list, "[[", 1)), names(signature_list))
       if(any(names(class_list) %in% tvar)) next
-      print(sapply(class_list, length))
-      str(class_list)
+      # print(sapply(class_list, length))
+      # str(class_list)
       if(any(sapply(class_list, length) == 0)){
         warning("'", mynameis, "' has 0 feature value(s)"); next
       }
-      # names(class_list) <- paste0(casefold(gsub(paste0("_", mynameis), "", names(class_list)), upper = TRUE), ".Score")
       names(class_list) <- paste0(casefold(str_safe_remove(names(class_list), "signature"), upper = TRUE), ".Score")
       signature_list <- c(signature_list, list(c(name = paste0("orig.", names(lsignatures[i])), class_list)))
     }
@@ -124,7 +128,7 @@ signature_scoring <- function(
     if(v) cat(" # heatmap\n")
     graphics.off()
     fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring[[1]])), '_heatmap.pdf')
-    if(!finished_file(fname)){
+    if(!is.file.finished(fname)){
       pdf(fname, width = 10, height = 12, onefile = FALSE);
       p <- try(custom_heatmap(
         object = object, # should be normalised
@@ -144,34 +148,35 @@ signature_scoring <- function(
     for(redu in names(reductions)){
       if(v) cat(" #", redu, "\n")
       fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring[[1]])), '_', redu, '.pdf')
-      if(finished_file(fname)) next
+      if(is.file.finished(fname)) next
       p <- lapply(names(scoring[-1]), function(x){
         aesy <- aes_string(x = reductions[[redu]][1], y = reductions[[redu]][2], color = x)
         ggplot(data = ddfplot, mapping = aesy) +
         geom_point(size = 0.1) + scale_color_gradientn(colours = couls) +
         labs(colour = NULL, title = make_title(x))
       })
-      pdf(fname, width = ifelse(length(p) > 1, 11, 7), height = ifelse(length(p) > 2, 11, 7));
+      tvar <- make_grid(length(p)) # t o determine when it's more
+      pdf(fname, width = tvar[1]*tvar[3], height = tvar[2]*tvar[3]);
       print(cowplot::plot_grid(plotlist = p)); graphics.off()
     }
     for(confy in confounders){
       if(v) cat(" -", confy, "\n")
       fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring[[1]])), "_violin_", confy, '.pdf')
-      if(finished_file(fname)) next
+      if(is.file.finished(fname)) next
       tvar <- length(table(ddfplot[, confy]))
       ddfplot[, confy] <- factormix(ddfplot[, confy])
       p <- violins(
         dat = ddfplot,
         xax = confy,
         yax = names(scoring[-1]),
-        colour_by = "pct"
+        colour_by = "mean"
       ) + RotatedAxis()
-      pdf(fname, width = ifelse(tvar > 4, 11, 7), height = ifelse(length(scoring) > 2, 10, 7));
+      pdf(fname, width = 12, height = 8);
       print(p)
       graphics.off()
     }
   }
-  # setwd(initpath)
+
   if(v) cat("-- --------- ------- --\n")
-  return(0) # return(object)
+  return(object)
 }

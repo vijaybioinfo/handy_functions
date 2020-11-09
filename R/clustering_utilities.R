@@ -30,13 +30,14 @@ get_source_data <- function(
     if(v) cat("Merging libraries:", length(fnames), "/", length(lnames), "\n")
     tgottendata <- lapply(names(fnames), function(x){
       if(v) cat("."); y <- Seurat::Read10X(fnames[x])
+      if(all(grepl("\\-1", colnames(y)))) colnames(y) <- gsub("\\-.*", "", colnames(y))
       colnames(y) <- sub(paste0(x, "_"), "", paste0(colnames(y), "-", which(names(lnames) == x)))
       y
     }); if(v) cat(" ")
     allgenes <- unique(unlist(lapply(tgottendata, rownames)))
-    if(v) cat("All genes:", commas(allgenes), "\n")
+    if(v) cat("All genes:", show_commas(allgenes), "\n")
     allgenes <- allgenes[rowSums(sapply(tgottendata, function(x) allgenes %in% rownames(x) )) == length(tgottendata)]
-    if(v) cat("Overlaping genes:", commas(allgenes), "\n")
+    if(v) cat("Overlaping genes:", show_commas(allgenes), "\n")
     tgottendata <- lapply(tgottendata, function(x){
       x[allgenes, ]
     })
@@ -59,6 +60,67 @@ get_source_data <- function(
   if(v) cat('DONE!\n'); gc()
   if(exists('this_annot')) return(list(mycellsdata = gottendata, source_file = xpath, annottab = this_annot))
   return(list(mycellsdata = gottendata, source_file = xpath))
+}
+
+set_dir_pats <- function(x, pj = '10XData', v = FALSE){
+  mypats <- c('outs', 'filtered_feature_bc_matrix', 'filtered_gene_bc_matrices_mex',
+    pj, 'hg19', 'filtered_gene_bc_matrices_h5.h5', 'filtered_feature_bc_matrix.h5')[-c(6:7)]
+  # if(!dir.exists(x)) return(x)
+  # list.files(x, recursive = T, pattern = "filtered_", full.name = T) # takes too long
+  setdir(x, pats = mypats, v = v)
+}
+# set directory with names
+setdir <- function(x, pats = NULL, v = FALSE){
+  pats <- unlist(strsplit(pats, "/"))
+  pats <- unique(pats)
+  x <- dircheck(x)
+  if(v) cat("Setting folder with root:", x, "\n")
+  if(v) cat("Patterns:", show_commas(pats), "\n")
+  n <- length(pats)
+  for(i in 1:n){
+    tmp <- list.files(x)
+    tmp <- tmp[tmp %in% pats]
+    if(length(tmp) == 1){
+      if(v) cat(rep(' ', i - 1), "|--", tmp, "\n")
+      x <- paste0(x, tmp, '/')
+    }
+  }
+  return(x)
+}
+
+# add gene set percentages
+add_pcts <- function(
+  mdata,
+  edata,
+  feature_pattern = list(
+    pctMitochondrial = c('^mt-', '^m-', '^hg19_mt-', '^mm10_mt-'),
+    pctRibosomal = paste0(c('^rps', '^rpl'), "[0-9]"),
+    pctHSprefix = c("^hsp[0-9]"),
+    pctHeatShock = paste0("^hsp", letters[1:5])
+  ),
+  verbose = FALSE
+){
+  if(verbose) cat("Total samples:", nrow(mdata), "\n")
+  edata <- edata[, rownames(mdata)]
+  column_total <- Matrix::colSums(edata)
+  void <- sapply(names(feature_pattern), function(pname){
+    grep(
+      pattern = paste0(feature_pattern[[pname]], collapse = "|"),
+      x = rownames(edata), ignore.case = TRUE, value = TRUE
+    )
+  })
+  void <- void[sapply(void, length) > 0]
+  if(length(void) > 0){
+    if(verbose) cat("Retrieving sets:\n")
+    if(verbose) str(void)
+    pcts <- data.frame(sapply(void, function(feature_patterned){
+      y <- round(Matrix::colSums(x = edata[feature_patterned, , drop = FALSE]) / column_total * 100, 2)
+      y[is.na(y)] <- max(y, na.rm = TRUE)
+      y
+    }))
+    mdata <- joindf(pcts, mdata)
+  }else{ if(verbose) cat("No pattern found\n") }
+  mdata
 }
 
 # Get top markers
@@ -197,7 +259,7 @@ markers_summary <- function(
     v = v
   )
   if(all(covar %in% colnames(annot)) && !is.null(covar)){
-    if(v) cat("Using", commas(covar), "as covariate\n")
+    if(v) cat("Using", show_commas(covar), "as covariate\n")
     annot$covar <- do.call('paste', c(annot[c(resolut, covar)], sep = "_"))
     stattab <- cbind(stattab, get_stat_report(
       mat = datavis,
@@ -248,6 +310,17 @@ markers_summary <- function(
   marktab <- data.frame(marktab, stringsAsFactors = FALSE, check.names = FALSE)
   rownames(marktab) <- make.names(marktab$gene, unique = TRUE)
   marktab
+}
+
+clust_similarity <- function(df){
+  df[, 1] <- as.character(df[, 1])
+  df[, 2] <- factor(df[, 2])
+  df[, 3] <- factor(df[, 3])
+  list(
+    JI = clusteval::cluster_similarity(labels1 = as.numeric(df[, 2]), labels2 = as.numeric(df[, 3])),
+    ARI = mclust::adjustedRandIndex(x = df[, 2], y = df[, 3]),
+    NMI = NMI::NMI(X = df[, 1:2], Y = df[, c(1, 3)])$value
+  )
 }
 
 make_cluster_names <- function(vec){

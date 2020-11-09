@@ -2638,13 +2638,16 @@ meta_filtering <- function(
       addeds <- c(addeds, colname)
     }
   }
-  tvar <- unique(c(cname, sapply(filters, head, 1)))
-  if((!is.null(addeds) && ('combn' %in% tvar)) || grepl(sepchar, cname)){
-    addeds <- if(is.null(addeds)) unlist(strsplit(cname, sepchar)) else unique(addeds)
-    if(v) cat("Combining columns", addeds, "\n", sep = " ")
-    # filters <- filters[!sapply(filters, head, 1) %in% addeds] # remove added from filters
-    mdata$combn <- apply(mdata[, addeds, drop = FALSE], 1, paste, collapse = "_")
-    if(grepl(sepchar, cname)) colnames(mdata) <- sub("^combn$", cname, colnames(mdata))
+  allcnames <- unique(c(cname, sapply(filters, head, 1)))
+  allcnames <- allcnames[grepl(sepchar, allcnames)]
+  allcnames <- allcnames[!allcnames %in% colnames(mdata)]
+  if(length(allcnames) > 0){
+    for(cname_i in allcnames){
+      addeds <- unlist(strsplit(cname_i, sepchar))
+      if(verbose) cat("Combining columns:", addeds, sep = "\n")
+      mdata$combn <- apply(mdata[, addeds, drop = FALSE], 1, paste, collapse = "_")
+      colnames(mdata) <- sub("^combn$", cname_i, colnames(mdata))
+    }
   }
 
   # now if there's further filtering

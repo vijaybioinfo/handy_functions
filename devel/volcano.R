@@ -2,7 +2,6 @@
 
 # volcano adding a new continuous colour to the points
 
-# source('/mnt/BioHome/ciro/scripts/functions/volcano_variant_color.R')
 volplot <- function(
   x,
   pvalth = 0.05,

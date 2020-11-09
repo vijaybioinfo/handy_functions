@@ -1,0 +1,39 @@
+Name,Colour,Description,Alias
+CM,#B22222,Classical monocytes,
+NCM,#FF8C00,Non-classical monocytes,M2
+NK,#FFD700,NK cells,
+BN,#32CD32,Naive B cells,B_CELL_NAIVE
+CD4N,#00BFFF,Naive CD4 cells,CD4_NAIVE
+CD8N,#EE82EE,Naive CD8 cells,CD8_NAIVE
+CD4STIM,#0000CD,Activated naive CD4 cells,CD4_STIM
+CD8STIM,#9932CC,Activated naive CD8 cells,CD8_STIM
+TREGNAIVE,#83BDAA,Naive TREG cells,
+TREGMEM,#319272,Memory TREG cells,
+TH1,#754600,TH1 cells,
+TH1-17,#C37600,TH1/17 cells,THSTAR
+TH17,#E1BA7F,TH17 cells,
+TH2,#FFB4B4,TH2 cells,
+TFH,#A6B0E3,TFH cells,
+TFHSTIM,,Activated TFH cells,TFH_Stim
+NCSB,,Non-class switched B cells,
+CSB,,Class-switched B cells,
+LCL-GM12878,,LCL cell line GM12878,
+IGMB,,IgM memory B cells,
+MAIT,#CDCDCB,CD8 MAIT cells,
+MAITSTIM,#676765,Activated CD8 MAIT cells,
+TEM,#CC99FF,CD8 TEM cells,
+TEMSTIM,#6600CC,Activated CD8 TEM cells,
+CD4TRM,,CD4 Tissue Resident Memory cells,CD4_TRM
+CD4TRMSTIM,,Activated CD4 Tissue Resident Memory cells,CD4_TRM_STIM
+CD4TRM-like,,CD4 Tissue Resident Memory-like cells,CD4_TRMlike
+CD4TRM-likeSTIM,,Activated CD4 Tissue Resident Memory-like cells,CD4_TRMlike_STIM
+TEFF,,CD4 T effector cells,TEFF
+TEFFSTIM,,Activated T effector cells,TEFF_STIM
+CD8TRM,,CD8 Tissue Resident Memory cells,CD8_TRM
+CD8TRMSTIM,,Activated CD8 Tissue Resident Memory cells,CD8_TRM_STIM
+TREG,,T Regulatory cells,TREG
+TREGSTIM,,Activated T Regulatory cells,TREG_STIM
+TFR,,TFR cells,TFR
+TFRSTIM,,Activated TFR cells,TFR_STIM
+CD4,#00BFFF,CD4 T cells,CD4
+CD8,#EE82EE,CD8 T cells,CD8

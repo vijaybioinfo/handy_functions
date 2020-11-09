@@ -1,4 +1,5 @@
-load_packs(c('grid', 'RColorBrewer', 'scales', 'gtable', 'stats', 'grDevices', 'graphics'))
+mypackages = c('grid', 'RColorBrewer', 'scales', 'gtable', 'stats', 'grDevices', 'graphics')
+sapply(mypackages, function(x) require(x, quietly = TRUE, character.only = TRUE) )
 lo = function(rown, coln, nrow, ncol, cellheight = NA, cellwidth = NA, treeheight_col, treeheight_row, legend, annotation_row, annotation_col, annotation_colors, annotation_legend, annotation_names_row, annotation_names_col, main, fontsize, fontsize_row , fontsize_col, angle_col, gaps_row, gaps_col, ...){
     # Get height of colnames and length of rownames
     if(!is.null(coln[1]) | (!is.na2(annotation_row) & annotation_names_row)){
@@ -1113,4 +1114,22 @@ grid.draw.pheatmap <- function(x, recording = TRUE) {
 #' @export
 print.pheatmap <- function(x, ...) {
     grid.draw(x)
+}
+
+
+find_coordinates <<- function(n, gaps, m = 1:n){
+    if(length(gaps) == 0){
+        return(list(coord = unit(m / n, "npc"), size = unit(1 / n, "npc") ))
+    }
+
+    if(max(gaps) > n){
+        stop("Gaps do not match with matrix size")
+    }
+
+    size = (1 / n) * (unit(1, "npc") - length(gaps) * unit("0.5", "bigpts"))
+
+    gaps2 = apply(sapply(gaps, function(gap, x){x > gap}, m), 1, sum)
+    coord = m * size + (gaps2 * unit("0.5", "bigpts"))
+
+    return(list(coord = coord, size = size))
 }
