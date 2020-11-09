@@ -6,7 +6,7 @@
 
 # Mergin metadata tables and prepearing expession data
 
-source("/home/ciro/scripts/handy_functions/devel/overlap.R")
+source("https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/overlap.R")
 
 rnaseq_merge_metadata <- function(
   fnames,

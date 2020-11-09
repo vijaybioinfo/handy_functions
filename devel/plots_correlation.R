@@ -167,7 +167,7 @@ correlation_heatmap <- function(
   caption <- paste0(caption, tmp)
   if(sum(dim(matdata) >= 2) == 2){
     if(return_plot || feature_position) pdf(file = NULL)
-    # source('/home/ciro/scripts/handy_functions/devel/heatmap2Correction.R')
+    # source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/heatmap2Correction.R')
     # d <- heatmap.2c(
     d <- gplots::heatmap.2(
       x = matdata, scale = "none", col = rgb.palette, main = title,

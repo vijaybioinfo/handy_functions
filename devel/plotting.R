@@ -1208,8 +1208,7 @@ geneCorr <- function(
   tmp <- paste(nrow(matdata), 'features')
   if(verbose) cat("Plotting", tmp, '\n\n')
   sublab <- paste(sublab, '\n', tmp)
-  fheatmap <- '/mnt/BioHome/ciro/scripts/functions/heatmap2Correction.R'
-  if(file.exists(fheatmap)) source(fheatmap)
+  source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/heatmap2Correction.R')
   if(sum(dim(matdata) >= 2) == 2){
     if(plot_return || rank_genes) pdf(file = NULL)
     # d <- gplots::heatmap.2(matdata, scale = "none", col = rgb.palette, main = mmain,

@@ -349,7 +349,7 @@ cleanEnv <- cleanenv <- function(keep = NULL){
   cat('Keeping:',paste0(keep, collapse = ', '),'\n')
   rm(list = myvars[!myvars %in% keep], pos = 1L)
   eval.parent(gc(), n = 1); gc()
-  source('/mnt/BioHome/ciro/scripts/functions/handy_functions.R')
+  source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/code.R')
 }
 
 # repeat char/number in a data.frame with x rows

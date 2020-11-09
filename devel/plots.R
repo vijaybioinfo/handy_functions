@@ -370,7 +370,7 @@ custom_heatmap <- function(
     )
   }else{
     cat("Using pheatmap\n")
-    source('/home/ciro/scripts/handy_functions/devel/pheatmapCorrection.R')
+    source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/pheatmapCorrection.R')
     if(is.na(feature_order) || is.character(feature_order)) feature_order <- FALSE
     pheatmap(
       mat = mat_to_plot,

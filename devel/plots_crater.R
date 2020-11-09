@@ -36,11 +36,11 @@
 # ' addinfo <- crater_plot(tests_list = c(comp1 = '/path1', comp2 = '/path2'))
 #'
 
-source("/home/ciro/scripts/handy_functions/devel/filters.R")
+source("https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/filters.R")
 # filters_subset_df
-source("/home/ciro/scripts/handy_functions/devel/utilities.R")
+source("https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/utilities.R")
 # show_commas, features_parse_ensembl, bordering, summ_tables
-source("/home/ciro/scripts/handy_functions/devel/plots.R")
+source("https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/plots.R")
 # make_breaks, make_title, plot_blank
 
 crater_plot <- function(
