@@ -12,7 +12,7 @@ readfile <- function(
   if(isTRUE(usedt) && grepl("tsv$|csv$|txt$", myfile)){
     file_content <- data.frame(data.table::fread(myfile), stringsAsFactors = FALSE, check.names = FALSE)
     rownames(file_content) <- file_content[, 1]; file_content <- file_content[, -1, drop = FALSE]
-  }else if(grepl("rda$|rta$|rdata$|robj$rds$", myfile, ignore.case = TRUE)){
+  }else if(grepl("rda$|rta$|rdata$|robj$|rds$", myfile, ignore.case = TRUE)){
     if(verbose) cat(" - From RData file\n");
     file_content <- theObjectSavedIn(myfile)
   }else if(grepl("csv$", myfile, ignore.case = TRUE)){
