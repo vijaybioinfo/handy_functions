@@ -160,7 +160,8 @@ ClassifyScoring <- function(
 ) {
   cc.columns <- grep(pattern = name, x = colnames(x = object[[]]), value = TRUE)
   if(is.null(names(features))) names(features) <- paste0("S", 1:length(features))
-  if(name %in% cc.columns){ warning(name, " pre-computed"); return(object) }
+  check_precomp <- all(c(name, names(features)) %in% colnames(x = object[[]]))
+  if(check_precomp){ warning(name, " pre-computed"); return(object) }
   if(verbose) str(features)
 
   # Renaming columns colliding with previous signatures; first the 'name'

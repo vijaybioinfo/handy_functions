@@ -24,6 +24,7 @@
 #' 'top(number)' if you need more genes added to the vector].
 #' @param gene_pattern Pattern for genes you want to show on the plot.
 #' @param column4stats Columns you want stats to be grouped by.
+#' @param theme_extra Object of class 'gg' to add to the plot.
 #' @keywords DGEA
 #'
 #' @return Returns table of crater data and stats if columns for it are given
@@ -57,9 +58,11 @@ crater_plot <- function(
   topgenes = 5,
   gene_pattern = NULL,
   column4stats = NULL,
+  theme_extra = NULL,
   gene_filter = list(mean = c("<=1", NA)),
   outputname = "./",
   return_out = FALSE,
+  plot_squared = NULL,
   plot_interactive = FALSE,
   couls = c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','red2','#b30000', '#670000'),
   verbose = FALSE
@@ -203,14 +206,16 @@ crater_plot <- function(
   borgenes <- features_matching(unique(unlist(borgenes)), rownames(mydatafc))
   if(verbose) cat("Showing", length(borgenes), "genes\n")
   mydatafc_repel <- mydatafc[borgenes, ]
-  ncolor <- make_breaks(c(0, mydatafc$log2_mean), n = length(couls)*2, push = c(max = 0.1))
+  # ncolor <- make_breaks(c(0, mydatafc$log2_mean), n = length(couls)*2, push = c(max = 0.1))
+  ncolor <- pretty(x = c(0, na.omit(mydatafc$log2_mean)), n = 5)
   set.seed(27); aesy <- aes_string(x = comp_names[1], y = comp_names[2], color = 'log2_mean', size = 'significance')
   mysubtitle <- paste0(selection, ifelse(is.null(selection), "", "\n"))
   mysubtitle <- paste0(mysubtitle, 'Passed filters: ', sum(!mydatafc$filters))
   p <- ggplot(data = mydatafc) +
     geom_point(data = mydatafc[mydatafc$filters, ], mapping = aesy) +
     geom_point(data = mydatafc[!mydatafc$filters, ], mapping = aesy) +
-    scale_color_gradientn(colours = couls, values = scales::rescale(ncolor), na.value = "#c4c4c4") +
+    scale_color_gradientn(colours = couls, breaks = ncolor, na.value = "#f5f5f5") +##c4c4c4
+    # colours = couls, values = scales::rescale(ncolor)
     geom_hline(yintercept = c(-lfcthresh, lfcthresh), linetype = "dashed", alpha = 0.4) +
     geom_vline(xintercept = c(-lfcthresh, lfcthresh), linetype = "dashed", alpha = 0.4) +
     labs(
@@ -223,20 +228,26 @@ crater_plot <- function(
       panel.background = element_rect(size = 2)
     )
   p <- p + guides(size = guide_legend(keywidth = 0.5, keyheight = 0.5, default.unit = "inch"))
+  p <- p + scale_radius(breaks = pretty(mydatafc[!mydatafc$filters, ]$significance, n = 5), range = c(0, 4))
 
-  aesy <- aes_string(x = comp_names[1], y = comp_names[2], label = 'gene_name', size = 'significance')
+  aesy <- aes_string(x = comp_names[1], y = comp_names[2], label = 'gene_name')#, size = 'significance')
   mydatafc_repel$significance[mydatafc_repel$significance == 0] <- 0.1; set.seed(27)
   p <- p + geom_text_repel(data = mydatafc_repel, mapping = aesy, color = 'black')
   return_list <- list(comp_stat = mydatafc, plot = p)
 
+  if(!is.null(plot_squared)){
+    p <- plots_squared(p, comp_names, verbose = verbose, limit = plot_squared)
+  }
+  if(!is.null(theme_extra)) p <- p + theme_extra
+
   if(!isTRUE(return_out)){
     if(verbose) cat("Plotting\n")
-    # pdf(paste0(outputname, '.pdf'), 10, 10)
-    # print(p)
-    # dev.off()
-    # pdf(paste0(outputname, '_blank.pdf'), 10, 10)
-    # print(plot_blank(p))
-    # dev.off()
+    pdf(paste0(outputname, '.pdf'), 10, 10)
+    print(p)
+    dev.off()
+    pdf(paste0(outputname, '_blank.pdf'), 10, 10)
+    print(plot_blank(p))
+    dev.off()
     if(isTRUE(plot_interactive)){
       if(verbose) cat("Generating interactive files\n")
       suppressPackageStartupMessages(library(dplyr))

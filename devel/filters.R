@@ -21,7 +21,7 @@ filters_complex <- meta_filtering <- function(
     return(list(annotation = mdata[filters, ]))
   }
   tvar <- cname %in% colnames(mdata);
-  if(sum(!tvar)) warning("Column name(s) not found: ", show_commas(cname[!tvar]))
+  if(sum(!tvar) > 0 && cname[1] != "none") warning("Column name(s) not found: ", show_commas(cname[!tvar]))
   cname <- cname[tvar]
   if(verbose) cat("Watch-out columns:", show_commas(cname), "\n")
   if(verbose){ cat('Using filter:\n'); str(filters) }
@@ -81,17 +81,23 @@ filters_complex <- meta_filtering <- function(
 
   # now if there's further filtering
   # watch out for 'cname' column samples/cells by table(cname, column_filtering_by)
-  if(verbose) cat("Filtering now\n")
-  if(any(sapply(filters, head, 1) %in% colnames(mdata))){
-    if(verbose) cat("Based on a list\n");
-    if(!is.null(cname) && verbose){ # watch out before
+  if(verbose) cat("Filtering:")
+  did_filter <- nrow(mdata); filters_rec <- filters
+  filters_found <- sapply(filters, head, 1) %in% colnames(mdata)
+  if(any(filters_found)){
+    if(any(!grepl("^expr", sapply(filters[!filters_found], head, 1)))){
+      stop("Missing column ", sapply(filters[!filters_found], head, 1))
+    }
+    filters <- filters[filters_found]
+    if(verbose) cat("- based on a list\n")
+    if(isTRUE(cname %in% colnames(mdata)) && verbose && (length(filters) > 1)){ # watch out before
       tvar <- filters[!sapply(filters, head, 1) %in% cname[1]]
       void <- lapply(tvar, function(x) table(mdata[, c(cname[1], x[1])], useNA = 'always') )
       void <- reshape2::melt(void)
       if('value' %in% colnames(void)) print(head(void[void$value > 0, ], 20)) else print(head(void, 20))
     }
     mdata <- mdata[filters_subset_df(filters, mdata, verbose = verbose), ]
-    if(!is.null(cname) && verbose){ # watch out after
+    if(isTRUE(cname %in% colnames(mdata)) && verbose && (length(filters) > 1)){ # watch out after
       tvar <- filters[!sapply(filters, head, 1) %in% cname[1]]
       void <- lapply(tvar, function(x) table(mdata[, c(cname[1], x[1])], useNA = 'always') )
       void <- reshape2::melt(void)
@@ -102,17 +108,23 @@ filters_complex <- meta_filtering <- function(
     if(exists('filterssuffix')){
       filters <- paste0(filterssuffix, filters); rm(filterssuffix)
     }
-  }
+  }; filters <- filters_rec
 
-  tvar <- sapply(filters, function(x) any(grepl("^express", x)) )
+  tvar <- sapply(filters, function(x) any(grepl("^expr", x)) )
   if(any(tvar)){
-    if(verbose) cat("Based on an expression\n");
-    filters <- sub("expr[A-z]+ ", "", filters[tvar][[1]])
-    sset <- paste0("cellsf <- rownames(subset(annottab, subset = ", filters, "))")
-    if(verbose) cat("Expression:", sset, "\n")
-    eval(expr = parse(text = sset))
-    mdata <- mdata[cellsf, ]
+    if(verbose) cat("- based on an expression\n")
+    filters <- unlist(filters[tvar])
+    myfilters <- gsub("^expr[A-z]{,7}", "", gsub("^expr[A-z]{,7} ", "", filters))
+    myfilters <- filters[filters != ""];
+    myfilters <- filters[!grepl("^expr", filters)];
+    for(myfilter in myfilters){
+      sset <- paste0("cellsf <- rownames(subset(mdata, subset = ", myfilter, "))")
+      if(verbose) cat("Expression:", sset, "\n")
+      eval(expr = parse(text = sset))
+      mdata <- mdata[cellsf, ]
+    }
   }
+  if(did_filter == nrow(mdata) && verbose) cat("- no filter applied\n")
   return(list(annotation = mdata, filter = filters))
 }
 
@@ -206,6 +218,91 @@ filters_summary <- summary_subset <- function(x){
   if(length(tvar) > 0) paste0(tvar, collapse = "_and_") else ""
 }
 
+filters_vector = function(
+  x,
+  include = "", # "" means everything
+  exclude = "noneofthem", # "noneofthem" so nothing matches
+  rename = NULL,
+  verbose = TRUE
+){
+  obs_in = if(!is.null(include)){
+    if(length(include) > 1) x[x %in% include] else grep(pattern = include, x = x, value = TRUE)
+  }else{ x }
+  obs_ex = if(!is.null(exclude)){
+    if(length(exclude) > 1) x[x %in% exclude] else grep(pattern = exclude, x = x, value = TRUE)
+  }else{ exclude }
+  if(verbose){ cat("Excluding:\n"); print(format(unname(obs_ex), justify = "centre")) }
+  obs_in = obs_in[!obs_in %in% obs_ex]; names(obs_in) <- obs_in
+  for(i in names(rename)) names(obs_in) <- gsub(i, rename[[i]], names(obs_in))
+  # tvar <- !grepl("RNA", names(obs_in))
+  # obs_in[tvar] <- stringr::str_to_sentence(gsub("_", " ", obs_in[tvar]))
+  if(verbose){ cat("Final names:\n"); print(format(obs_in, justify = "centre")) }
+  return(obs_in)
+}
+
+# get columns with a max N of groups
+filters_columns <- function(
+  mdata,
+  onames = NULL,
+  maxn = 50,
+  types = "all",
+  na_rm = FALSE,
+  duplicate_rm = TRUE,
+  verbose = TRUE,
+  ... # arguments for filters_vector
+){
+  if(is.null(onames)) onames <- colnames(mdata); onames <- rev(onames)
+  if(any(c("numeric", "integer") %in% types)) maxn <- Inf
+  tvar <- sapply(mdata[, onames, drop = FALSE], class)
+  if("all" %in% types) types <- unique(tvar)
+  if(verbose) cat("Types:", show_commas(types), '\n')
+  tvar <- setNames(tvar %in% types, names(tvar)) # if it's the type and has no NA's
+  if(isTRUE(na_rm)) tvar <- tvar & !sapply(mdata[, names(tvar), drop = FALSE], function(x) any(is.na(x)) )
+  onames <- onames[onames %in% names(which(tvar))]
+  onames <- filters_vector(#include = include, exclude = exclude, rename = rename,
+    x = onames, verbose = verbose > 1, ...
+  )
+  if(length(onames) == 0){ if(verbose) cat("Taking all columns\n"); onames <- colnames(mdata) }
+  if(verbose) cat("Filtering", length(onames), "\n")
+  nnames <- sapply(setNames(onames, unname(onames)), function(x){
+    if(is.numeric(mdata[, x])) -1 else length(unique(mdata[, x]))
+  })
+  if(duplicate_rm){
+    tvar <- is.finite(nnames) & nnames > 1; dnames <- onames[tvar][duplicated(nnames[tvar])]
+    # n_freq = table(nnames[tvar]) > 1
+    # dnames <- onames[onames %in% names(nnames[nnames %in% as.numeric(names(n_freq[n_freq]))])]
+  }
+  onames <- onames[order(nnames)]
+  onames <- onames[nnames[onames] != nrow(mdata)] # excluding  N = total rows
+  onames <- onames[nnames[onames] > 1] # excluding N = 1
+  onames <- onames[nnames[onames] <= maxn] # N <= 27 because ggpairs doesn't allow more than this
+  onames <- onames[!is.na(onames)]
+  if(length(onames) == 1) return(onames)
+  if(duplicate_rm){
+    if(verbose) cat("Columns wiht same N:", length(dnames), "\n")
+    if(verbose) cat("Checking if groups in columns are the same\n")
+    if(verbose > 1) print(reshape2::melt(sort(nnames[unname(dnames)])))
+    pairs <- try(gtools::combinations(n = length(dnames), r = 2, v = dnames))
+    if(class(pairs) != 'try-error'){
+      kha <- apply(pairs, 1, function(x){
+        y <- table(mdata[, c(x)])
+        diag(y) <- 0; any(rowSums(y) > 0) # take when none but diagonal are 0, aka, same N groups
+      })
+      if(verbose && any(!kha)) cat(sum(!kha), "matching 1-to-1 groups:", show_commas(pairs[!kha, 2]), "\n")
+      if(any(!kha)){
+        dnames <- dnames[!dnames %in% pairs[!kha, 2]]
+        onames <- c(onames[!onames %in% dnames], dnames)
+      }else{ cat("Keeping all explored\n") }
+    }else if(verbose){
+      cat("n =", length(onames), "/ unique =", length(unique(onames)), "-", show_commas(unique(onames)), "\n")
+    }# by row, is the element duplicated and then are all elements in a given row duplicated?
+  }
+  kha <- apply(t(apply(mdata[, onames, drop = FALSE], 1, duplicated)), 2, sum)
+  onames <- onames[(kha != nrow(mdata))]
+  if(verbose) cat("Returning:", length(onames), "\n")
+  onames
+}
+
 # Create a column for cells expressing a gene
 features_get_tag <- function(gg, sig = '+', prefix = FALSE){
   if(is.list(gg)){ cat("'gg' already a list\n"); return(gg) }
@@ -232,7 +329,8 @@ features_add_tag <- add_gene_tag <- function(
     thresh[is.na(thresh)] <- 0
   }
   names(thresh) <- lgenes
-  newcolms <- cbindList(lapply(lgenes, function(thisgene){
+  # Used cbindList > list2evendf > mat_names
+  newcolms <- lapply(lgenes, function(thisgene){
     if(verbose) cat('----\nGene:', thisgene, '- threshold:', thresh[thisgene], '\n')
     if(prefix){
       tags <- paste0(tag, "_", casefold(thisgene, upper = TRUE))
@@ -248,8 +346,8 @@ features_add_tag <- add_gene_tag <- function(
     # if(verbose){ cat("Positive summary:\n"); print(summary(tvar)) }
     if(verbose){ cat('Proportions'); print(table(annot[, tags[1]])) }
     return(annot[, tags[1], drop = FALSE])
-  }))
-  newcolms
+  })
+  as.data.frame(newcolms)
 }
 
 # when you have a vector of filters you want to place separated by
@@ -420,6 +518,17 @@ fig_features <- function(config, features, verbose = TRUE){
   })
   if(one_config) config[[1]] else config
 }
+fig_set_from_object <- function(object){
+  config = list()
+  config$metadataf = config$metadatafbk = "same"
+  config$edataf = config$edatafbk = "same"
+  if(casefold(class(object))[1] == "seurat"){
+    config$metadata = object@meta.data
+    config$edata = object@assays$RNA@data
+    config$odata = object
+  }
+  config
+}
 
 fig_set_data <- function(
   config,
@@ -432,7 +541,7 @@ fig_set_data <- function(
   config$edatafbk <- if(is.null(config$edatafbk)) "none" else config$edatafbk
   config$metadatafbk <- if(is.null(config$metadatafbk)) "file_name" else config$metadatafbk
 
-  cat("# Fetching data # ------------------------------------------------------------\n")
+  if(verbose) cat("# Fetching data # ------------------------------------------------------------\n")
   config$metadata <- if(isTRUE(config$metadataf != config$metadatafbk)){
     if(verbose) cat("Loading [meta]data\n", config$metadataf, "\n")
     readfile(config$metadataf, row.names = 1, stringsAsFactors = FALSE, verbose = verbose)
@@ -471,12 +580,13 @@ fig_set_data <- function(
   if(verbose) cat(config$name, "\n")
   rownames(config$edata) <- features_parse_ensembl(rownames(config$edata))
   myfeatures <- if(!is.null(config$features)) features_parse_ensembl(config$features)
-  cat("# Filtering features and agents (samples/cells) # ----------------------------\n")
-  myfeatures <- rownames(filters_complex(
-    mdata = config$edata,
-    filters = myfeatures,
-    verbose = verbose
-  )$annotation)
+  if(verbose) cat("# Filtering features and agents (samples/cells) # ----------------------------\n")
+  myfeatures <- show_found(myfeatures, rownames(config$edata), v = verbose)
+  # colnames(filters_complex(
+  #   mdata = t(config$edata),
+  #   filters = myfeatures,
+  #   verbose = verbose
+  # )$annotation)
   # It can also add a new category based on feature levels
   tvar <- if(is.null(config$axis_x$name)){
     unique(unlist(sapply(config$axis_x, function(x) x$name )))
@@ -490,7 +600,7 @@ fig_set_data <- function(
   )
   ssamples <- rownames(tvar$annotation)
   edata_ss <- if(!is.null(config$transf)){
-    cat("# Applying transformations # -------------------------------------------------\n")
+    if(verbose) cat("# Applying transformations # -------------------------------------------------\n")
     tvar <- c(gsub("log[0-9]{,1}", "", config$transf), gsub("(log[0-9]{,1}).*", "\\1", config$transf))
     edata_ss <- count_transformation(
       cts = config$edata[rownames(config$edata) %in% myfeatures, colnames(config$edata) %in% ssamples],
@@ -498,9 +608,14 @@ fig_set_data <- function(
     )
     count_transformation(cts = edata_ss[[1]][myfeatures, ], transf = tvar[2], verbose = verbose)[[1]]
   }else{ config$edata[rownames(config$edata) %in% myfeatures, colnames(config$edata) %in% ssamples] }
-  cat("# Sorting the identities # ---------------------------------------------------\n")
+  if(verbose) cat("# Sorting the identities # ---------------------------------------------------\n")
   ddf <- config$metadata[ssamples, ]
-  if(length(myfeatures) != nrow(config$edata)) ddf <- cbind(ddf, t(as.matrix(edata_ss))[ssamples, ])
+  if(length(myfeatures) < (nrow(config$edata) * .3)){
+    if(verbose) cat("# Adding features to pdata # -------------------------------------------------\n")
+    tvar <- if(is.null(dim(edata_ss))) t(t(edata_ss)) else t(as.matrix(edata_ss))[, myfeatures]
+    colnames(tvar) <- myfeatures
+    ddf <- cbind(ddf, tvar[ssamples, , drop = FALSE])
+  }
   ddf <- fig_set_identities(mdata = ddf, idents = config$axis_x, verbose = verbose)
 
   config$pdata = ddf
@@ -511,6 +626,13 @@ fig_set_data <- function(
   return(config)
 }
 
+# idents = list(
+#   Identity = list(
+#     name = "column(s)",
+#     identnames = c(old_name = "new_name"),
+#     order = "factor order"
+#   )
+# )
 fig_set_identities <- function(mdata, idents = NULL, verbose = FALSE){
   if(is.null(idents)) return(mdata)
   idents <- if(is.null(idents$name)) idents else list(idents)
@@ -520,7 +642,7 @@ fig_set_identities <- function(mdata, idents = NULL, verbose = FALSE){
     if(sum(tvar)) warning(show_commas(new_cnames[tvar]), " exists in data")
     names(idents) <- new_cnames[1:length(idents)]
   }
-  mdata$Identity <- NULL
+  mdata$Identity <- NULL # eliminating Identity column
   for(i in names(idents)){
     if(verbose) cat("-- Column(s):", show_commas(idents[[i]]$name), "\n")
     tvar <- idents[[i]]$name %in% colnames(mdata)
@@ -537,7 +659,9 @@ fig_set_identities <- function(mdata, idents = NULL, verbose = FALSE){
       tvar <- as.character(mdata$tmp)
       ifelse(!tvar %in% idents[[i]]$order, "REST", tvar)
     }else{ mdata$tmp }
-    mdata$tmp <- if(!is.null(idents[[i]]$order) && any(mdata$tmp %in% idents[[i]]$order)){
+    tvar <- !is.null(idents[[i]]$order) && any(as.character(mdata$tmp) %in% idents[[i]]$order)
+    mdata$tmp <- if(tvar){
+      if(verbose) cat("Ordering identities\n")
       factor(mdata$tmp, idents[[i]]$order)
     }else{ factormix(mdata$tmp) }
     if(verbose) cat("Order:", show_commas(levels(mdata$tmp)), "\n")
@@ -545,3 +669,65 @@ fig_set_identities <- function(mdata, idents = NULL, verbose = FALSE){
   }
   return(mdata)
 }
+
+## Utilities
+factormix <- function(x){
+  if(!is.character(x)) return(x)
+  y <- as.character(x)
+  factor(y, levels = gtools::mixedsort(unique(y)))
+}
+remove.factors <- function (df) {
+  for (varnum in 1:length(df)) {
+    if ("factor" %in% class(df[, varnum])) {
+      df[varnum] = as.character(df[, varnum])
+    }
+  }
+  return(df)
+}
+joindf <- function(
+  x,
+  y,
+  keep_from_y = "NULL123",
+  type = c("left", "right", "full", "none"),
+  verbose = FALSE
+){
+  type <- match.arg(type)
+  # str(x); str(y)
+  if(type != "none"){
+    x$tmpcol123 <- rownames(x)
+    y$tmpcol123 <- rownames(y)
+    yvars <- colnames(y)[(!colnames(y) %in% colnames(x)) | colnames(y) %in% keep_from_y]
+    xvars <- colnames(x)[!colnames(x) %in% yvars] # exclude them from x if exist
+    if(verbose) cat('Keeping in y:', yvars, '\n')
+    if(verbose) cat('Droping in x:', ifelse(isTRUE(keep_from_y == 'NULL123'), "None", keep_from_y), '\n')
+    if(verbose) cat("Using:", type, "\n")
+    eval(expr = parse(text = paste0("functy <- dplyr::", type, "_join")))
+    z <- functy(
+      x = x[, xvars, drop = FALSE],
+      y = y[, c(yvars, 'tmpcol123'), drop = FALSE],
+      by = "tmpcol123"
+    )
+    rownames(z) <- z$tmpcol123
+    z <- z[, -which(colnames(z) == "tmpcol123")]
+  }else{
+    mycnames <- unique(c(colnames(x), colnames(y)))
+    z <- data.frame(mat_names(rnames = rownames(x), cnames = mycnames))
+    z[rownames(x), colnames(x)] <- x
+    icells <- intersect(rownames(x), rownames(y))
+    z[icells, colnames(y)] <- y[icells, ]
+  }
+  z
+}
+show_commas <- function(x, hn = 3){
+  tvar <- length(x)
+  if(tvar > 1){
+    tmp <- paste0(head(x[-tvar], hn), collapse = ', ')
+    connect <- ifelse(tvar-1 > hn, ' ... and ', ' and ')
+    tmp <- paste0(tmp, connect, x[tvar])
+    if(tvar-1 > hn) tmp <- paste0(tmp, ' (', tvar, ')')
+  }else{
+    tmp <- x
+  }
+  return(tmp)
+}
+addspaces <- function(x, m) paste0(x, paste0(rep(' ', m-nchar(x)), collapse = ''))

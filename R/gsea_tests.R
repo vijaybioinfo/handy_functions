@@ -1,6 +1,6 @@
 #!/usr/bin/R
 
-libs <- c('liger', 'fgsea', 'parallel', 'mdgsa', 'graphics', 'ggplot2')
+libs <- c('liger', 'fgsea', 'parallel', 'graphics', 'ggplot2')
 libs <- sapply(libs, require, character.only = TRUE, quietly = TRUE)
 if(any(!libs)) warning('Missing libraries ', paste0(names(libs[!libs]), collapse = " "))
 
@@ -22,6 +22,7 @@ if(any(!libs)) warning('Missing libraries ', paste0(names(libs[!libs]), collapse
 #' @param method Method to use.
 #' @param path Output path or prefix.
 #' @param plot_it Plot every test.
+#' @param classical_plot Create the classical GSEA plots.
 #' @param verbose Show progress.
 #' @keywords enrichment
 #'
@@ -136,13 +137,13 @@ gsea_tests <- function(
   go_names <- gsub(" activity|activity", "", sub("(^[A-z]{41,}).*", "\\1", go_names))
   if(verbose) cat("\n")
   for(indx in names(gset_list)){
-    cat("----------------\n", indx, "\n")
+    if(verbose) cat("----------------\t", indx, "\n")
     allgs <- sub("'", "", gset_list[[indx]]); allgs <- unique(allgs[allgs != ""])
     gs <- allgs[allgs %in% guniverse]
     if(verbose) cat(length(gs), "of", length(allgs), "found\n")
     if(length(gs) < 2) next
     suffy <- paste0(
-      suffix, "_", method, "_",
+      suffix, "_", method, "_", ifelse(isTRUE(classical_plot), "classic_", ""),
       ifelse(length(gs) != length(allgs), paste0(length(gs), "of"), ""),
       length(allgs)
     )
@@ -154,19 +155,19 @@ gsea_tests <- function(
     indxname <- gsub("_{2,}", "_", indxname)
 
     fname <- paste0(path, indxname, suffy, '.pdf')
-    pdf(fname, height = myheight, width = 7, onefile = TRUE)
     if(verbose) cat('Testing', metric, '\n'); set.seed(myseed)
     pval <- paste0("Adjusted P-value: ", round(fgseaRes[pathway == indx, "padj"], 5))
+    pdf(fname, height = myheight, width = 7, onefile = TRUE)
     if(method == "liger"){
       print(gsea(values = vals, geneset = gs, mc.cores = ncores, return.details = TRUE))
       if(!is.na(go_names[indx])) graphics::legend("bottomleft", legend = go_names[indx], bty = 'n', horiz = TRUE)
       graphics::legend("bottomright", legend = pval, bty = 'n', horiz = TRUE)
     }
     if(method == "fgsea"){
-      p <- if(classical_plot == "fgsea"){
+      p <- if(isTRUE(classical_plot == "fgsea")){
         plotEnrichment(pathway = gs, stats = vals)
       }else{
-        gsea_plotEnrichment(
+        try(gsea_plotEnrichment(
           pathway = gs,
           stats = vals,
           gsea.metric = metric_names[metric],
@@ -175,7 +176,7 @@ gsea_tests <- function(
           padj = signif(unlist(fgseaRes[pathway == indx, "padj"]), 2),
           pval = signif(unlist(fgseaRes[pathway == indx, "pval"]), 2),
           classical_plot = classical_plot
-        )
+        ))
       }
       if(any(unlist(class(p)) == "ggplot")) print(p)
     }
@@ -236,14 +237,25 @@ gsea_metric <- function(
   if(verbose){ print(head(stattab)); print(tail(stattab)) }
   stattab2 <- data.frame(sapply(colnames(stattab), function(x){
     y <- stattab[, x]
-    if(grepl("_sd", x)){ # check these lines... might explain the spikes when no filter is applied
-      ttab <- as.matrix(data.frame(minsd = .2 * abs(stattab[, sub("_sd", "_mean", x)]), sd = y))
-      y <- matrixStats::rowMaxs( ttab )
+    if(grepl("_sd", x)){ # σ has a minimum value of .2 * absolute(μ), where μ=0 is adjusted to μ=1
+      mean_adj = abs(stattab[, sub("_sd", "_mean", x)])
+      mean_adj = ifelse(mean_adj == 0, 1, mean_adj)
+      matrixStats::rowMaxs( as.matrix(data.frame(minsd = .2 * mean_adj, sd = y)) )
     }
-    if(grepl("_mean", x)) y <- ifelse(y == 0, 1, y)
-    y
+    # y <- stattab[, x]
+    # if(grepl("_sd", x)){ # check these lines... might explain the spikes when no filter is applied
+    #   ttab <- as.matrix(data.frame(minsd = .2 * abs(stattab[, sub("_sd", "_mean", x)]), sd = y))
+    #   y <- matrixStats::rowMaxs( ttab )
+    # }
+    # if(grepl("_mean", x)) y <- ifelse(y == 0, 1, y) # understimating differences... or even switching!
+    # Observations are perserved!!!!
+    # /home/ciro/large/covid19/results/a1_final_figures_cd8/Figure_4/fgsea_new/a1_gsea_summary_37sets_2020-10-13_NES.pdf
+    # /home/ciro/large/covid19/results/a1_final_figures_cd8/Figure_4/fgsea_update_2021-03-18/summary_NES0_padj0.05_heatmap.pdf
+    return(y)
   }), row.names = rownames(stattab)); stattab <- stattab2; rm(stattab2)
-  dmean <- apply( stattab[, rev(grep("_mean", colnames(stattab)))], 1, diff )
+  means <- rev(grep("_mean", colnames(stattab)))
+  if(verbose) cat("Means:", means, "\n")
+  dmean <- apply( stattab[, means], 1, diff ) # diff would be x[2] - x[1], x[3] - x[2]...
   if(verbose) cat(metric, "\n")
   ymetric <- switch(metric,
     Signal2Noise = {
@@ -287,7 +299,7 @@ gsea_metric <- function(
 #' @param method Method to use.
 #' @param path Output path or prefix.
 #' @param plot_it Plot every test.
-#' @param pct_thr Percentage threshold for filtering before metric calculation.
+#' @param exp_thr Expression level threshold to filter before metric calculation.
 #' @param verbose Show progress.
 #' @keywords mean sd GSEA
 #'
@@ -308,12 +320,12 @@ gsea_matrix <- function(
   mat, # count matrix or a table of metrics per comparison as columns
   groups = NULL, # just the column and it'll do vs REST
   metadata = NULL,
-  metric = 'custom',
+  metric = "Signal2Noise",#'custom',
   gsea_list = 5,
   method = c("fgsea", "liger"),
   path = "./",
   plot_it = TRUE,
-  pct_thr = 1,
+  exp_thr = 0,
   classical_plot = FALSE,
   verbose = TRUE
 ){
@@ -333,8 +345,8 @@ gsea_matrix <- function(
     metadata <- metadata[colnames(mat), ]
   }
   if(verbose) cat("Filtering matrix\n")
-  # mat <- mat[Matrix::rowMeans(mat > 0) > pct_thr, ]
-  mat <- mat[Matrix::rowMeans(mat) > pct_thr, ]
+  #if(exp_thr > 0)
+  mat <- mat[Matrix::rowMeans(mat) > exp_thr, ]
   features <- rownames(mat); group_column <- ""
   if(verbose) cat("Features:", length(features), head(features), tail(features), sep = "\n")
   if(!is.null(metadata)){
@@ -367,7 +379,7 @@ gsea_matrix <- function(
   mygroups <- remove.factors(mygroups)
   if(verbose) cat("Tests:\n"); if(verbose) print(head(mygroups, 10))
 
-  resnamef <- paste0(path, "metrics_per_", group_column, ".csv")
+  resnamef <- paste0(path, "metrics_per_", group_column, "_", exp_thr, ".csv")
   res <- if(file.exists(resnamef)){
     if(verbose) cat("Previously found metrics table\n")
     read.csv(resnamef, row.names = 1, check.names = FALSE)
@@ -388,46 +400,50 @@ gsea_matrix <- function(
   }
 
   # Performing tests
-  void <- list()
-  for(i in 1:nrow(mygroups)){
-    if(verbose) cat("Comparison:", mygroups[i, ]$name, "\n")
-    if(!mygroups[i, ]$name %in% colnames(res)){
-      metadata$tmp <- as.character(metadata[, mygroups[i, ]$column])
-      metadata_t <- if(as.character(mygroups[i, 2]) == "REST"){
-        metadata$tmp <- ifelse(!metadata$tmp %in% mygroups[i, 1], "REST", metadata$tmp)
-        metadata
-      }else{
-        metadata[metadata$tmp %in% unlist(mygroups[i, 1:2]), ]
-      }
-      tvar <- as.character(metadata_t$tmp)
-      names(tvar) <- rownames(metadata_t)
-      tvar <- c(tvar[tvar %in% mygroups[i, 1]], tvar[tvar %in% mygroups[i, 2]])
+  tests_list_f <- paste0(path, "tests_", group_column, "_", exp_thr, "_", length(gsea_list), "lists.rds")
+  if(!file.exists(tests_list_f)){
+    tests_list <- list()
+    for(i in 1:nrow(mygroups)){
+      if(verbose) cat("Comparison:", mygroups[i, ]$name, "\n")
+      if(!mygroups[i, ]$name %in% colnames(res)){
+        metadata$tmp <- as.character(metadata[, mygroups[i, ]$column])
+        metadata_t <- if(as.character(mygroups[i, 2]) == "REST"){
+          metadata$tmp <- ifelse(!metadata$tmp %in% mygroups[i, 1], "REST", metadata$tmp)
+          metadata
+        }else{
+          metadata[metadata$tmp %in% unlist(mygroups[i, 1:2]), ]
+        }
+        tvar <- as.character(metadata_t$tmp)
+        names(tvar) <- rownames(metadata_t)
+        tvar <- c(tvar[tvar %in% mygroups[i, 1]], tvar[tvar %in% mygroups[i, 2]])
 
-      res$comparison_name <- gsea_metric(
-        groups = tvar,
-        mat = mat[rownames(res), ],
+        res$comparison_name <- gsea_metric(
+          groups = tvar,
+          mat = mat[rownames(res), ],
+          metric = metric,
+          verbose = verbose
+        )
+        colnames(res) <- gsub("^comparison_name$", mygroups[i, ]$name, colnames(res))
+        write.csv(res, file = resnamef)
+      }
+      if(mygroups[i, ]$name %in% colnames(res)){
+        res[, metric] <- res[, mygroups[i, ]$name]
+      }
+      tests_list[[mygroups[i, ]$name]] <- gsea_tests(
+        res = res,
+        feature_names = "gene_name",
         metric = metric,
+        gsea_list = gsea_list,
+        method = method,
+        path = paste0(path, mygroups[i, ]$name, "/"),
+        plot_it = plot_it,
+        classical_plot = classical_plot,
         verbose = verbose
       )
-      colnames(res) <- gsub("^comparison_name$", mygroups[i, ]$name, colnames(res))
-      write.csv(res, file = resnamef)
     }
-    if(mygroups[i, ]$name %in% colnames(res)){
-      res[, metric] <- res[, mygroups[i, ]$name]
-    }
-    void[[mygroups[i, ]$name]] <- gsea_tests(
-      res = res,
-      feature_names = "gene_name",
-      metric = metric,
-      gsea_list = gsea_list,
-      method = method,
-      path = paste0(path, mygroups[i, ]$name, "/"),
-      plot_it = plot_it,
-      classical_plot = classical_plot,
-      verbose = verbose
-    )
-  }
-  return(void)
+    saveRDS(object = tests_list, file = tests_list_f)
+  }else{ tests_list <- readRDS(tests_list_f) }
+  return(tests_list)
 }
 
 #' GSEA summaries
@@ -463,7 +479,7 @@ gsea_matrix <- function(
 #'
 
 gsea_plot_summary <- function(
-  tests_list,
+  tests_list = NULL,
   type = c("NES", "padj", "NLE", "ES", "LE"),
   path = "./",
   padjthr = 0.05,
@@ -485,76 +501,97 @@ gsea_plot_summary <- function(
     LE = list(title = "Leading Edge", transf = round2)
   )
   plot_var <- plot_var[names(plot_var) %in% type]
+  if(is.null(tests_list)){
+    fname <- list.files(path, pattern = "tests_.*rds$", full.names = TRUE)
+    if(length(x = fname) == 0) stop("No results in ", path)
+    if(length(x = fname) > 1) stop("More than one result in ", path)
+    tests_list <- readRDS(fname)
+  }
 
   mygseas <- data.table::rbindlist(lapply(names(tests_list), function(x){
     y <- tests_list[[x]]
-    z <- cbind(
-      comparison = strsplit(basename(x), "_a1")[[1]][1],
-      LE = sapply(y$leadingEdge, length),
-      y
-    ) # z$NLE = z$LE / z$size
-    return(z)
+    z <- cbind(comparison = x, leadingEdgeN = sapply(y$leadingEdge, length), y)
+    w <- colnames(z); w <- c(grep("leadingEdge", w, invert = TRUE), grep("leadingEdge", w))
+    z[, ..w]
   }))
   if(!is.null(pathways)) mygseas <- mygseas[as.character(mygseas$pathway) %in% pathways, ]
-  thistab <- mygseas[mygseas$padj <= padjthr & (mygseas[[type]] >= nesthr | mygseas[[type]] <= -nesthr), ]
-
-  fname0 <- paste0(path, "a1_gsea_summary_", nrow(thistab), "sets_", gsub(" .*", "", Sys.time()))
+  fname0 <- paste0(path, "summary_", nrow(mygseas), "tests_", type)
   data.table::fwrite(x = mygseas, file = paste0(fname0, ".txt"), sep = "\t")
 
-  if(nrow(thistab) == 0){ warning("None passed p-value <= ", padjthr, " nor ", type, " of ", nesthr); return(0)}
+  thistab <- mygseas[mygseas$padj <= padjthr & (mygseas[[type]] >= nesthr | mygseas[[type]] <= -nesthr), ]
+  fname0 <- paste0(path, "summary_", type, nesthr, "_padj", padjthr)
 
-  mysum <- data.table::dcast.data.table(thistab, comparison ~ pathway, value.var = names(plot_var))
-  mysum <- plot_var[[1]]$transf(data.frame(mysum[, -1], stringsAsFactors = FALSE, row.names = mysum$comparison))
-  tmysum <- mysum <- t(as.matrix(mysum))
-  if(!is.null(axes$columns)) mysum <- mysum[, axes$columns[axes$columns %in% colnames(mysum)]]
-  if(!is.null(axes$rows)) mysum <- mysum[axes$rows[axes$rows %in% rownames(mysum)], ]
-  cc = if(is.null(axes$columns)) TRUE else FALSE
-  cr = if(is.null(axes$rows)) TRUE else FALSE
-  if(isTRUE(na.rm)) mysum[is.na(mysum)] <- 0
-  # annoc <- data.frame(
-  #   Cluster = names(identnames), Identity = unname(identnames), row.names = names(identnames)
-  # )
-  # annoc <- annoc[, sapply(annoc, function(x) !any(is.na(x)) ), drop = FALSE]
-  # anncolist <- lapply(annoc, function(x) v2cols(x, grcols, v = TRUE) )
+  if(nrow(thistab) == 0){
+    warning("None passed p-value <= ", padjthr, " nor ", type, " of ", nesthr);
+  }else{
+    mysum <- data.table::dcast.data.table(thistab, comparison ~ pathway, value.var = names(plot_var))
+    mysum <- plot_var[[1]]$transf(data.frame(mysum[, -1], stringsAsFactors = FALSE, row.names = mysum$comparison))
+    tmysum <- mysum <- t(as.matrix(mysum))
+    tmysum[is.na(tmysum)] <- 0
+    mysum <- if(any(colnames(mysum) %in% axes$columns)){
+      mysum[, axes$columns[axes$columns %in% colnames(mysum)]]
+    }else{
+      hc <- hclust(dist(scale(t(tmysum))))
+      mysum[, hc$labels[hc$order]]
+    }
+    mysum <- if(any(rownames(mysum) %in% axes$rows)){
+      mysum[axes$rows[axes$rows %in% rownames(mysum)], ]
+    }else{
+      hc <- hclust(dist(scale(tmysum)))
+      mysum[hc$labels[hc$order], ]
+    }
+    if(isTRUE(na.rm)) mysum[is.na(mysum)] <- 0
 
-  x <- pheatmap::pheatmap(
-    mat               = mysum,
-    cluster_rows      = cr,
-    cluster_cols      = cc,
-    scale             = 'none',
-    border_color      = NA,
-    show_colnames     = TRUE,
-    show_rownames     = TRUE,
-    main              = plot_var[[1]]$title,
-    # annotation_col    = annoc,
-    # annotation_colors = anncolist,
-    na_col            = "#BEBEBE",
-    annotation_legend = TRUE,
-    annotation_names_col = TRUE,
-    annotation_names_row = TRUE,
-    drop_levels       = TRUE,
-    filename          = paste0(fname0, "_", names(plot_var), ".pdf"),
-    width = 10, height = 7,
-    ...
-  );
+    x <- pheatmap::pheatmap(
+      mat                  = mysum,
+      cluster_rows         = FALSE,
+      cluster_cols         = FALSE,
+      scale                = 'none',
+      border_color         = NA,
+      show_colnames        = TRUE,
+      show_rownames        = TRUE,
+      main                 = plot_var[[1]]$title,
+      na_col               = "#BEBEBE",
+      annotation_legend    = TRUE,
+      annotation_names_col = TRUE,
+      annotation_names_row = TRUE,
+      drop_levels          = TRUE,
+      filename             = paste0(fname0, "_heatmap.pdf"),
+      width = 10, height = 7,
+      ...
+    );
 
-  # # in case it failed when not setting NAs to 0
-  # mysum <- tmysum[x$tree_row$labels[x$tree_row$order], x$tree_col$labels[x$tree_col$order]]
-  # cr <- cc <- FALSE
+    # Radar plot
+    # library(ggradar) # devtools::install_github("ricardo-bion/ggradar")
+    # library(dplyr)
+    mysum_radar <- if(isTRUE(radar_transpose)) data.frame(t(mysum)) else mysum
+    mysum_radar[is.na(mysum_radar)] <- 0; mysum_radar2 <- mysum_radar
+    mysum_radar[mysum_radar < 0] <- 0
+    p1 <- make_radar(mysum_radar, mid_point = nesthr) + labs(title = "Enriched")
+    mysum_radar2[mysum_radar2 > 0] <- 0; mysum_radar2 <- abs(mysum_radar2)
+    p2 <- make_radar(mysum_radar2, mid_point = nesthr) + labs(title = "Depleted") + theme(legend.position = "none")
+    pleg <- cowplot::get_legend(p1)
+    p1 <- p1 + theme(legend.position = "none")
+    pdf(paste0(fname0, "_radar.pdf"), width = 10, height = 10)
+    print(p1); print(p2); plot(pleg)
+    dev.off()
+    return(list(data = mysum, heatmap = x, radar_pos = p1, radar_ned = p2, legend = pleg))
+  }
+}
 
-  # Radar plot
-  library(ggradar) # devtools::install_github("ricardo-bion/ggradar")
-  library(dplyr)
-  if(isTRUE(radar_transpose)) mysum <- data.frame(t(mysum))
-  mysum[is.na(mysum)] <- 0
-  p <- mysum %>%
-    tibble::as_tibble(rownames = "group") %>%
-    mutate_at(vars(-group), scales::rescale) %>% ggradar()
-  pdf(paste0(fname0, "_", names(plot_var), "_radar.pdf"), width = 15, height = 15)
-  print(p)
-  dev.off()
-
-  return(mysum)
+make_radar <- function(dat, mid_point = NULL){
+  dat <- tibble::as_tibble(x = dat, rownames = "group")
+  # p2 <- dat %>% mutate_at(vars(-group), scales::rescale) %>% ggradar()
+  mid_points <- max(dat[, -1])
+  if(is.null(mid_point)) mid_point <- mid_points / 2
+  mid_points <- c(0, mid_point, mid_points)
+  p <- ggradar::ggradar(
+    plot.data = dat,
+    values.radar = c("0", paste("Threshold =", mid_point), mid_points[3]),
+    grid.mid = mid_points[2], grid.max = mid_points[3],
+    gridline.mid.colour = "#9c0000"#, gridline.mid.linetype = "dash"
+  )
+  return(p)
 }
 
 remove.factors <- function (df) {
@@ -691,7 +728,7 @@ gsea_plotEnrichment <- function(
 
     par(mar = c(0, 5, 0, 2))
     rank.colors <- gsea.rnk_metric - metric.range[1]
-    rank.colors <- rank.colors / (abs(diff(metric.range[2:1])))
+    rank.colors <- rank.colors / abs(diff(abs(metric.range[2:1])))
     rank.colors <- ceiling(rank.colors * 255 + 1)
     tryCatch({
       rank.colors <- colorRampPalette(c("blue", "white", "red"))(256)[rank.colors]
@@ -713,13 +750,15 @@ gsea_plotEnrichment <- function(
     par(mar = c(5, 5, 0, 2))
     rank.metric <- rle(round(gsea.rnk_metric, digits = 2))
     is_there_a_metric = isTRUE((length(gsea.metric) > 0) & !is.na(gsea.metric))
+    ablines <- try(seq(metric.range[1] / 2, diff(metric.range[2:1]) / 4, metric.range[2] / 2))
+    print(metric.range)
     plot(
       gsea.rnk_metric, type = "n", xaxs = "i",
       xlab = "Rank in ordered gene list", xlim = c(0, length(gsea.rnk_metric)),
       ylim = metric.range, yaxs = "i",
       ylab = if(!is_there_a_metric){ "Ranking metric" }else{ gsea.metric },
       panel.first = abline(
-        h = seq(metric.range[1] / 2, diff(metric.range[2:1]) / 4, metric.range[2] / 2),
+        h = ifelse(class(ablines) != "try-error", ablines, 0),
         col = "gray95", lty = 2)
     )
     barplot(

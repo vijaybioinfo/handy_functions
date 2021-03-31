@@ -28,6 +28,18 @@ dirnamen <- function(x, n = 1){
   return(x)
 }
 
+# Archive files/folders
+file.archive = function(pattern, name = "archive/"){
+  # format(Sys.time(), '%Y_%m_%d/')
+  outdir = paste0(name, Sys.Date(), "/")
+  dir.create(outdir, recursive = TRUE)
+  y <- list.files(pattern = pattern)
+  if(length(y)){
+    command = paste("mv", y, outdir)
+    lapply(command, system, invisible = TRUE)
+  }; invisible(x = NULL)
+}
+
 remove.factors <- function (df) {
   for (varnum in 1:length(df)) {
     if ("factor" %in% class(df[, varnum])) {
@@ -35,6 +47,12 @@ remove.factors <- function (df) {
     }
   }
   return(df)
+}
+
+# https://stackoverflow.com/questions/3452086/getting-path-of-an-r-script
+script_rscript <- function() {
+  rscript_file <- gsub(".*=(.*)", "\\1", grep("--file=", base::commandArgs(), value = TRUE))
+  return(rscript_file)
 }
 
 # ggplot type colours
@@ -201,6 +219,27 @@ column_collapse <- function(metab, rname = 1, verbose = FALSE){
   sx
 }
 
+# Summarises a table by the complement of a column
+summarise_table = function(x, column = colnames(x)[1], sep = "|"){
+  x[, column] <- factormix(x[, column])
+  summarised <- if(ncol(x) == 1){
+    return(x)
+  }else{
+    y <- lapply(X = setNames(levels(x = x[, column]), levels(x = x[, column])),
+      FUN = function(ident) {
+        slice <- x[x[, column] == ident, , drop = FALSE]
+        z <- data.frame(lapply(setNames(2:ncol(slice), colnames(slice)[-1]), function(i){
+          y <- slice[, i]; if(is.factor(y)) y <- droplevels(y)
+          if(!is.numeric(y)) paste0(levels(factormix(y)), collapse = sep) else mean(y)
+        })); z[, column] <- ident; z
+    }); #y <- data.frame(reshape2::melt(data.table::rbindlist(y)));
+    y <- as.data.frame(data.table::rbindlist(y))
+    y <- y[, ncol(y):1]; rownames(y) <- y[, 1]
+    for(i in colnames(x)) if(is.factor(x[, i])) y[, i] <- factor(as.character(y[, i]), levels(x[, i]))
+    y
+  }; return(summarised)
+}
+
 # combine tables by a column
 summ_tables <- function(
   ltabs,
@@ -280,7 +319,54 @@ vlist2df <- function(x, maxlen = NULL){
   colnames(tvar) <- names(x)
   return(tvar)
 }
+vlist2df_diff <- function(x, y, delim = "Not found"){
+  final <- lapply(names(x), function(z){
+    x1 <- !y[[z]] %in% x[[z]] # values missing in the subset
+    print(sum(x1))
+    if(sum(x1) > 0) c(x[[z]], delim, y[[z]][x1]) else x[[z]]
+  }); ddf <- vlist2df(final)
+  sizes <- paste0(sapply(x, length), "of", sapply(y, length))
+  names(ddf) <- paste0(names(x), ";", sizes)
+  ddf[is.na(ddf)] <- ""
+  return(ddf)
+}
 
+# process list to get data.frames
+list2dfs <- function(mylist){
+  if(all(sapply(mylist, is.vector))){
+    mylist <- list(vlist2df(mylist))
+  }else{
+    mylist <- lapply(mylist, function(x){
+      if(is.data.frame(x)) return(x)
+      if(is.vector(x)) return(data.frame(x, stringsAsFactors = F))
+      if(is.matrix(x)){
+        tvar <- data.frame(x, stringsAsFactors = F)
+        colnames(tvar) <- colnames(x)
+        return(tvar)
+      }
+    })
+  }
+  mylist
+}
+
+# make list of data.frames or list of lists of vectors the same number of rows
+list2evendf <- function(mylist){
+  mylist <- list2dfs(mylist)
+  maxlen <- max(sapply(mylist, nrow))
+  mylist <- lapply(mylist, function(z){
+      tvar <- mat_names(rnames = nrow(z):(maxlen-1), cnames = colnames(z))
+      if(nrow(z) != maxlen) tvar <- rbind(z, tvar) else tvar <- z
+      colnames(tvar) <- colnames(z)
+      return(tvar)
+  })
+}
+
+# merge list of data.frames or matrices with differing nrows
+cbindList <- function(mylist){
+  mylist <- list2evendf(mylist)
+  listdf <- do.call(cbind, list2evendf(mylist))
+  return(listdf)
+}
 
 ### Cosmetics ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 show_found <- function(x, y, element = 'Elements', verbose = FALSE){
@@ -322,7 +408,7 @@ show_parameters <- function(
   cat(paste0(rep(' ',maxchar),collapse = ''),'Default\tPARAMETERS\n')
   void <- lapply(1:length(parms),function(i){
     tvar <- parms[i]
-    addspaces <- paste0(rep(' ', maxchar-nchar(tvar)),collapse = '')
+    add_nspaces <- paste0(rep(' ', maxchar-nchar(tvar)),collapse = '')
     lol <- suppressWarnings(try(evaluation <- paste0(eval(as.name(names(tvar))), collapse=', ')))
     if(class(lol) == 'try-error'){
       cat('lol')
@@ -330,7 +416,7 @@ show_parameters <- function(
       evaluation <- paste0(eval(as.name(names(tvar))), collapse=', ')
     }
     ifdef <- ifelse(flaggy[names(tvar)],  defv[1], defv[2])
-    cat(tvar, addspaces, ifdef,'\t--->',evaluation,'\n')
+    cat(tvar, add_nspaces, ifdef,'\t--->',evaluation,'\n')
     if(is.character(eval(as.name(names(tvar))))[1]){
       if(length(eval(as.name(names(tvar)))) > 1){
         return(paste0(names(tvar)," = c(\'",paste0(eval(as.name(names(tvar))),collapse='\', \''),'\')\n'))
@@ -399,11 +485,18 @@ bordering <- function(dtab, cnames = 1, n = 5, func = headtail){
 
 is.file.finished <- function(x, size = 3620) file.exists(x) && isTRUE(file.size(x) > size)
 
-# create factors with levels in the right order
+# create factors with levels in alphanumeric order
 factormix <- function(x){
   if(!is.character(x)) return(x)
   y <- as.character(x)
   factor(y, levels = gtools::mixedsort(unique(y)))
+}
+ident_combine = function(mdata, columns = colnames(mdata), sep = "-"){
+  for(i in columns) mdata[, i] <- factormix(mdata[, i])
+  if(length(columns) > 1){
+    tvar <- interaction(mdata[, columns], sep = sep, lex.order = TRUE)
+    factor(tvar, levels(tvar)[levels(tvar) %in% as.character(tvar)])
+  }else{ mdata[, columns] }
 }
 
 ### Order ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -500,59 +593,9 @@ order_group <- function(x, groups){
   c(groups[groups %in% x], x[!x %in% groups])
 }
 
-# get columns with a max N of groups
-extract_grouping_cols <- function(
-  metadat,
-  onames = NULL,
-  maxn = 27,
-  ckeep = NULL, cignore = NULL,
-  types = "character",
-  na_rm = FALSE,
-  verbose = FALSE
-){
-  metadat <- remove.factors(metadat)
-  if(is.null(onames)) onames <- colnames(metadat)
-  if('numeric' %in% types) maxn <- Inf
-  onames <- rev(onames)
-  if(verbose) cat("Selecting types:", paste0(types, collapse = ", "), '\n')
-  tvar <- sapply(metadat[, onames, drop = FALSE], class) %in% types # if it's the type and has no NA's
-  if(isTRUE(na_rm)) tvar <- tvar & !sapply(metadat[, onames, drop = FALSE], function(x) any(is.na(x)) )
-  onames <- onames[unname(tvar)]
-  if(!is.null(ckeep)){
-    if(length(ckeep) > 1){
-      onames <- onames[onames %in% ckeep]
-    }else{ onames <- onames[grepl(ckeep, onames, ignore.case = TRUE)] }
-  }
-  if(!is.null(cignore)) onames <- onames[!grepl(cignore, onames, ignore.case = TRUE)]
-  if(length(onames) == 0){ if(verbose) cat("Taking all columns\n"); onames <- colnames(metadat) }
-  if(verbose) cat("Filtering", length(onames), "\n")
-  nnames <- sapply(onames, function(x) length(unique(metadat[, x])) )
-  if(verbose) cat(sum(duplicated(nnames)), "same N across columns\n")
-  onames <- names(sort(nnames))
-  onames <- onames[nnames[onames] != nrow(metadat)] # excluding  N = total rows
-  onames <- onames[nnames[onames] > 1] # excluding N = 1
-  onames <- onames[nnames[onames] <= maxn] # N <= 27 because ggpairs doesn't allow more than this
-  if(length(onames) == 1) return(onames)
-  if(verbose) cat("Match 2-group combination:", length(onames), "\n")
-  pairs <- try(gtools::combinations(n = length(onames), r = 2, v = onames))
-  if(class(pairs) != 'try-error'){
-    kha <- apply(pairs, 1, function(x){
-      y <- table(metadat[, c(x)]) # as.data.frame.matrix
-      diag(y) <- 0; any(rowSums(y) > 0) # take when none but diagonal are 0, aka, same N groups
-    })
-    if(verbose && any(!kha)) cat(sum(!kha), "matching 1-to-1 groups:", paste0(pairs[!kha, 2], collapse = ", "), "\n")
-    onames <- onames[!onames %in% pairs[!kha, 2]]
-  }else{
-    if(verbose) cat("n =", length(onames), "/ unique =", length(unique(onames)), "-", paste0(unique(onames), collapse = ', '), "\n")
-  }
-  kha <- apply(t(apply(metadat[, onames, drop = FALSE], 1, duplicated)), 2, sum) # get dups across columns
-  onames <- onames[(kha != nrow(metadat))]
-  if(verbose) cat("Returning:", length(onames), "\n")
-  onames
-}
-
 # make a list of rownames out a column's categories or
 # return categories for each group in another column
+# check tibble::deframe
 make_list <- function(x, colname = colnames(x)[1], col_objects = NULL, grouping = FALSE){
   x <- remove.factors(x)
   tvar <- lapply(unique(x[, colname]), function(y){
@@ -588,6 +631,50 @@ features_matching <- findgenes <- function(x, y){
   if(all(x %in% y)) return(x[x %in% y])
   tvar <- grepl(paste(paste0("^", parse_ens_name(x), "$"), collapse = "|"), parse_ens_name(y), ignore.case = TRUE)
   y[tvar]
+}
+
+features_find_symbols <- function(
+  features_init,
+  annotation = NULL,
+  gene_name = c("gene_name", "gene"),
+  verbose = TRUE
+){
+  annotation <- if(is.character(annotation)){
+    annotation <- annotation[file.exists(annotation) & !dir.exists(annotation)]
+    if(verbose) cat("Using", annotation, "\n")
+    if(grepl("json$", annotation)){
+      config <- rjson::fromJSON(paste(readLines(annotation), collapse=""))
+      config <- sapply(config, function(x) if(is.list(x)) x else as.list(x) )
+      config$config$annotation_file
+    }
+  }else{ annotation }
+  gannot <- if(is.character(annotation)){
+    if(verbose) cat("Reading", annotation, "\n")
+    readfile(annotation, stringsAsFactors = FALSE)
+  }else{ annotation }
+  gene_name <- which(gene_name %in% colnames(gannot))[1]
+  if(is.data.frame(gannot)){
+    if(verbose) cat("Matching features column:")
+    rnames_col = which(sapply(gannot, function(x) all(features_init %in% x) ))[1]
+    if(!is.na(rnames_col)){
+      if(verbose) cat(rnames_col)
+      rownames(gannot) <- gannot[, rnames_col]
+      gannot <- gannot[features_init, ]
+    }; if(verbose) cat("\n")
+  }
+  newnames <- if(isTRUE(gene_name %in% colnames(gannot))){
+    if(all(features_init == rownames(gannot))){
+      if(features_init[1] != gannot[1, gene_name]){
+        if(verbose) cat("Appending", gene_name, "\n")
+        gannot$feature_id = paste0(features_init, "_", gsub("'", "", gannot[, gene_name]))
+        gannot$feature_id
+      }else{ features_init }
+    }else{ #if(mean(gannot[, gene_name] %in% features_init) > .9){
+      gannot = NULL; features_init
+    }
+  }else{ features_init }
+  if(verbose) str(newnames)
+  return(list(annotation = gannot, features = features_init))
 }
 
 ### Counts transformations ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -663,14 +750,3 @@ theme_axes <- function (
   )
   # ggplot_global$theme_all_null %+replace% t
 }
-plot_rm_layer <- function(gp, lays = "ext", verbose = FALSE){
-  if(verbose) cat("Layers:", sapply(gp$layers, function(x) class(x$geom)[1] ), "\n")
-  tvar <- sapply(gp$layers, function(x) !grepl(lays, class(x$geom)[1], ignore.case = TRUE) )
-  gp$layers <- gp$layers[tvar]
-  gp
-}
-plot_blank <- function(gp, lays = "ext", ...){
-  plot_rm_layer(gp, lays = lays, ...) + theme_axes()
-}
-
-plot_flush <- function(x){ graphics.off(); invisible(file.remove('Rplots.pdf')) }

@@ -13,41 +13,11 @@
 # load_packs(depends, v = FALSE)
 suppressPackageStartupMessages(library(ggplot2))
 #### General features #### -----------------------------------------------------
-rotatedAxisElementText = function(angle, position = 'x', cnter = 0.5){
-  angle     = angle[1];
-  position  = position[1]
-  positions = list(x=0,y=90,top=180,right=270)
-  if(!position %in% names(positions))
-    stop(sprintf("'position' must be one of [%s]",paste(names(positions),collapse=", ")),call.=FALSE)
-  if(!is.numeric(angle))
-    stop("'angle' must be numeric",call.=FALSE)
-  rads  = (angle - positions[[ position ]])*pi/180
-  hjust = cnter*(1 - sin(rads))
-  vjust = cnter*(1 + cos(rads))
-  element_text(angle = angle,vjust = vjust, hjust = hjust)
-}
-grid_theme <- function(){
-  theme_classic() + theme(
-        panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        strip.text.x = element_text(face = 'bold'),
-        strip.background = element_rect(fill = "#FFFFFF", linetype = 0))
-}
 # Transform normal plot to grob
 gwrapp <- function(x) {
     arbol <- grid.grabExpr( grid.echo(x) )
     y <- unit(1, 'null')
     gtable_col(NULL,list(arbol), y, y)
-}
-
-# set legend text
-SetLegendTextGG <- function(x = 12, y = "bold") {
-  return(theme(legend.text = element_text(size = x, face = y)))
-}
-
-# set legend point size
-SetLegendPointsGG <- function(x = 6) {
-  return(guides(colour = guide_legend(override.aes = list(size = x))))
 }
 
 getlegend <- function(
@@ -153,18 +123,6 @@ pct_per_quadrant <- function(
   return(gp)
 }
 
-# nice theme
-mytheme <- theme_classic() +
-  theme(
-    axis.text.x = element_text(face = "bold", hjust = 1, angle = 45),
-    axis.title.x = element_text(face = "bold"),#, colour = "#990000"),
-    axis.text.y = element_text(angle = 0, face = "bold"),
-    axis.title.y = element_text(face = "bold"),#, colour = "#990000"),
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    strip.text = element_text(face = 'bold', size = 10),
-    strip.background = element_rect(fill = "#FFFFFF", linetype = 1, size = 0.001)
-  )
-
 blank_theme <- theme_minimal()+
   theme(
     legend.position = "none",
@@ -201,21 +159,6 @@ drawsq <- theme_bw() +
     panel.grid.minor = element_blank(),
     panel.background = element_rect(size = 2)
   )
-
-# make the plot squeared if both axis are numeric
-squareplot <- function(gp, axmax = NULL, cnames = NULL){
-  if(is.null(cnames)){
-    cnames <- gsub("~", "", as.character(gp$mapping))[1:2]
-  }
-  # cat(paste(cnames, collapse = "; "), "\n")
-  dff <- gp$data[, cnames]
-  if(all(sapply(dff, is.numeric))){
-    if(is.null(axmax)) axmax <- max(abs(dff), na.rm = TRUE)
-    cat("Squared:", axmax, "\n")
-    gp <- gp + xlim(c(-axmax, axmax)) + ylim(c(-axmax, axmax))
-  }
-  gp
-}
 
 theme_Publication <- function(
   x,
@@ -2045,31 +1988,4 @@ bar_dis <- function(
     return(list(bars = g1, res = tableGrob(pvdf)))
   }
   return(g1)
-}
-
-simple_violin <- function(
-  dat,
-  xax = 1,
-  yax = 2,
-  sample_it = TRUE
-){
-  if(is.numeric(xax)) xax <- colnames(dat)[xax]
-  if(is.numeric(yax)) xax <- colnames(dat)[yax]
-
-  # tvar <- sample(1:nrow(dat), min(ifelse(nrow(dat) < 20000, nrow(dat)/3, nrow(dat)/5), 15000))
-  tvar <- if(isTRUE(sample_it)){ set.seed(27); sample_grp(dat, xax, maxln = -1000, v = FALSE) }else rownames(dat)
-  dat <- dat[order(dat[, xax]), ]
-  d2show <- dat[tvar, ]
-
-  aesy <- aes_string(x = xax, y = yax, fill = xax)
-  dp <- ggplot(dat, aesy) +
-    geom_jitter(
-      data = d2show, mapping =  aes_string(x = xax, y = yax), inherit.aes = FALSE,
-      shape = 16, position = position_jitter(0.2), color = 'black'
-    ) +
-    geom_violin(aes_string(color = xax), trim = TRUE, scale = 'width', alpha = 0.8)+
-    geom_boxplot(width=0.1, fill = "white", alpha = 0.25, outlier.shape = NA)+
-    theme_minimal()
-  if(length(unique(dat[, xax])) < 10) dp <- dp + scale_fill_brewer(palette = "Set1")
-  dp
 }

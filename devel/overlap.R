@@ -88,3 +88,67 @@ overlap_combn <- function(
   if(isTRUE(simplify)) return(data.frame(t(vlist2df(combinations)), stringsAsFactors = FALSE))
   return(combinations)
 }
+
+# Fisher exact text overlap
+overlap_test <- function(
+  x,
+  y = NULL,
+  total = NULL,
+  names = c("List1", "List2"),
+  row_str = c('in_', 'out_'),
+  main = NULL,
+  return_plot = TRUE,
+  verbose = FALSE
+){
+  suppressPackageStartupMessages(library(gridExtra))
+  if(is.list(x)){
+    if(!is.null(names(x))) mynames = names(x)[1:2]
+    y = x[[2]]
+    total = if(length(x) > 2){
+      if(is.numeric(x[[3]]) && length(x[[3]]) == 1) x[[3]] else length(x[[3]])
+    }else if(is.null(total)){
+      warning("Taking list as universe")
+      length(unlist(x))
+    }else{ total }
+    x = x[[1]]
+  }
+  if(is.null(y)) stop("Provide second list of features")
+  if(is.null(total)) stop("Provide number of features in the universe or the list itself")
+  mynames[is.na(mynames)] <- paste0("List", 1:2)[which(is.na(mynames))]
+
+  if(verbose) cat("Building object\n")
+  go_object <- GeneOverlap::newGeneOverlap(
+    listA = x,
+    listB = y,
+    genome.size = total
+  )
+  if(verbose) cat("Performing the test\n")
+  go_object <- GeneOverlap::testGeneOverlap(go_object)
+  if(verbose) cat("Contingency table\n")
+  ddf <- data.frame(GeneOverlap::getContbl(go_object)[2:1, 2:1])
+  colnames(ddf) <- paste0(row_str, mynames[1])
+  rownames(ddf) <- paste0(row_str, mynames[2])
+  if(is.null(main)) main = paste0(mynames, collapse = " vs ")
+  ft <- fisher.test(ddf); if(verbose) print(ft) # chisq.test(ddf)
+  ddfsum <- ddf; ddfsum$total <- rowSums(ddfsum); ddfsum <- rbind(ddfsum, colSums(ddfsum)); rownames(ddfsum)[3] <- 'total'
+  dimnames(ddfsum) <- lapply(dimnames(ddfsum), function(x) casefold(gsub("_", " ", x), T) )
+  ddf; lout <- list(object = go_object, conttable = ddfsum)
+
+  if(verbose) cat("Grob table\n")
+  tg <- gridExtra::tableGrob(ddfsum)
+  x_arrgorb <- gridExtra::arrangeGrob(
+    grobs =  list(
+      grid::textGrob(ft$method),
+      grid::textGrob(casefold(gsub("_", " ", main), T)),
+      gridExtra::tableGrob(ddfsum),
+      grid::textGrob(paste("95 % CI =", paste0(round(ft$conf.int[1:2], 4), collapse = ', '))),
+      grid::textGrob(paste("Odds ratio =", formatC(ft$estimate))),
+      grid::textGrob(paste0("Alt: ", ft$alternative, ', P-value =', formatC(ft$p.value)))
+    ), ncol = 1, heights = c(1/8, 1/8, 2, 1/8, 1/8, 1/8)
+  )
+  lout$table_grob <- x_arrgorb
+  if(!isTRUE(return_plot)){
+    grid.draw(x_arrgorb)
+  }else if(verbose) cat("You can plot it with 'grid.draw(out$table_grob)'. Add 'plot.new()' for a new page\n")
+  lout
+}

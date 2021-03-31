@@ -198,43 +198,6 @@ set_ops <- function(x, y, cname = NULL, addlen = FALSE, rename = NULL, tab = TRU
   }else{ return(setlist) }
 }
 
-# process list to get data.frames
-list2dfs <- function(mylist){
-  if(all(sapply(mylist, is.vector))){
-    mylist <- list(vlist2df(mylist))
-  }else{
-    mylist <- lapply(mylist, function(x){
-      if(is.data.frame(x)) return(x)
-      if(is.vector(x)) return(data.frame(x, stringsAsFactors = F))
-      if(is.matrix(x)){
-        tvar <- data.frame(x, stringsAsFactors = F)
-        colnames(tvar) <- colnames(x)
-        return(tvar)
-      }
-    })
-  }
-  mylist
-}
-
-# make list of data.frames or list of lists of vectors the same number of rows
-list2evendf <- function(mylist){
-  mylist <- list2dfs(mylist)
-  maxlen <- max(sapply(mylist, nrow))
-  mylist <- lapply(mylist, function(z){
-      tvar <- mat_names(rnames = nrow(z):(maxlen-1), cnames = colnames(z))
-      if(nrow(z) != maxlen) tvar <- rbind(z, tvar) else tvar <- z
-      colnames(tvar) <- colnames(z)
-      return(tvar)
-  })
-}
-
-# merge list of data.frames or matrices with differing nrows
-cbindList <- function(mylist){
-  mylist <- list2evendf(mylist)
-  listdf <- do.call(cbind, list2evendf(mylist))
-  return(listdf)
-}
-
 # Merge data.frames by column indexing
 cbindList_i <- function(x, i = NULL, type = 'left'){
   suppressPackageStartupMessages(library("dplyr"))
@@ -898,46 +861,6 @@ genes2sign <- function(
 # midpoints
 mids <- function(x) c(x[1]/2, x[-length(x)] + diff(x)/2)
 
-# find elbow
-get_elbow <- function(
-  x,
-  y = NULL,
-  threshold = .90,
-  decide = FALSE,
-  v = FALSE
-) {
-  if(is.null(y)){ y <- x; x <- 1:(length(y)) }
-  # ap <- approx(x, y, n=1000, yleft=min(y), yright=max(y))
-  # x <- ap$x; y <- ap$y
-  mindexes <- sapply(threshold, function(z) {
-    d1 <- diff(y) / diff(x) # first derivative
-    d2 <- diff(d1) / diff(x[-1]) # second derivative
-    thh <- abs(quantile(d2, probs = z))
-    indices <- which(abs(d2) >= thh)
-    if(v){
-      cat('SDEV thh:', thh, '\n')
-      cat("D'':", commas(round(d2[indices], 3)), '\n')
-      cat('SDEVs:', commas(round(y[indices], 3)), '\n')
-      cat('Chosen:', x[max(indices)], '->', y[max(indices)], '\n')
-    }
-    max(indices)
-  })
-  if(length(threshold) == 1)
-    return(list(elbows = mindexes, ptable = data.frame(y = max(y), x = mindexes + 0.25, N = 1), elbow = mindexes))
-  elfreqs <- table(mindexes)
-  if(isTRUE(decide)){
-    # if(length(elfreqs) == 2) bestfit <- mean(as.numeric(names(elfreqs))) # if only two points
-    # maxes <- as.numeric(names(elfreqs)[elfreqs == elfreqs[which.max(elfreqs)]])
-    # if(length(maxes) > 1) bestfit <- mean(maxes) # get between more freq points identified as elbows
-    # # maybe hard to decide, so agree on the more frequent and the lowest points
-    # if(length(elfreqs) > 3) bestfit <- mean(c(as.numeric(names(elfreqs[1])), max(maxes)))
-    bestfit <- round(mean(as.numeric(names(elfreqs))))
-  }else{ bestfit <- mean(mindexes) }
-  qposition <- data.frame(y = max(y), N = elfreqs[as.character(mindexes)])
-  colnames(qposition) <- c("y", "x", "N"); qposition$x <- as.numeric(as.character(qposition$x)) + 0.25
-  list(elbows = mindexes, ptable = qposition, elbow = bestfit)
-}
-
 ## replace categoris of a column in another
 creplace <- function(x, cin, cfrom, subs = NULL, newname = NULL){
   if(is.null(subs)) subs <- unique(x[, cin])
@@ -1319,72 +1242,6 @@ colours_from_metadata <- function(
   # system(paste("tail", fcouls_out))
   # postcols <- read.csv(fcouls_out, row.names = 1, stringsAsFactors = F)
   # head(postcols); tail(postcols)
-}
-
-# Fisher exact text overlap
-test_overlap <- function(
-  x,
-  y = NULL,
-  total = NULL,
-  names = c("List1", "List2"),
-  main = NULL,
-  return_plot = TRUE,
-  verbose = FALSE
-){
-  suppressPackageStartupMessages(library(gridExtra))
-  if(is.list(x)){
-    if(!is.null(names(x))) mynames = names(x)[1:2]
-    y = x[[2]]
-    total = if(length(x) > 2){
-      if(is.numeric(x[[3]]) && length(x[[3]]) == 1) x[[3]] else length(x[[3]])
-    }else if(is.null(total)){
-      warning("Taking list as universe")
-      length(unlist(x))
-    }else{ total }
-    x = x[[1]]
-  }
-  if(is.null(y)) stop("Provide second list of features")
-  if(is.null(total)) stop("Provide number of features in the universe or the list itself")
-  mynames[is.na(mynames)] <- paste0("List", 1:2)[which(is.na(mynames))]
-
-  if(verbose) cat("Building object\n")
-  go_object <- GeneOverlap::newGeneOverlap(
-    listA = x,
-    listB = y,
-    genome.size = total
-  )
-  if(verbose) cat("Performing the test\n")
-  go_object <- GeneOverlap::testGeneOverlap(go_object)
-  if(verbose) cat("Contingency table\n")
-  ddf <- data.frame(GeneOverlap::getContbl(go_object)[2:1, 2:1])
-  # colnames(ddf) <- gsub("A$", paste0("_", mynames[1]), colnames(ddf))
-  # rownames(ddf) <- gsub("B$", paste0("_", mynames[2]), rownames(ddf))
-  colnames(ddf) <- paste0(c('in_', 'out_'), mynames[1])
-  rownames(ddf) <- paste0(c('in_', 'out_'), mynames[2])
-  # chisq.test(ddf)
-  if(is.null(main)) main = paste0(mynames, collapse = " vs ")
-  ft <- fisher.test(ddf); if(verbose) ft
-  ddfsum <- ddf; ddfsum$total <- rowSums(ddfsum); ddfsum <- rbind(ddfsum, colSums(ddfsum)); rownames(ddfsum)[3] <- 'total'
-  dimnames(ddfsum) <- lapply(dimnames(ddfsum), function(x) casefold(gsub("_", " ", x), T) )
-  ddf; lout <- list(object = go_object, conttable = ddfsum)
-
-  if(verbose) cat("Grob table\n")
-  tg <- gridExtra::tableGrob(ddfsum)
-  x_arrgorb <- gridExtra::arrangeGrob(
-    grobs =  list(
-      grid::textGrob(ft$method),
-      grid::textGrob(casefold(gsub("_", " ", main), T)),
-      gridExtra::tableGrob(ddfsum),
-      grid::textGrob(paste("95 % CI =", paste0(round(ft$conf.int[1:2], 4), collapse = ', '))),
-      grid::textGrob(paste("Odds ratio =", formatC(ft$estimate))),
-      grid::textGrob(paste0("Alt: ", ft$alternative, ', P-value =', formatC(ft$p.value)))
-    ), ncol = 1, heights = c(1/8, 1/8, 2, 1/8, 1/8, 1/8)
-  )
-  lout$table_grob <- x_arrgorb
-  if(!isTRUE(return_plot)){
-    grid.draw(x_arrgorb)
-  }else if(verbose) cat("You can plot it with 'grid.draw(out$table_grob)'. Add 'plot.new()' for a new page\n")
-  lout
 }
 
 get_correct_root_state <- function(cds, cell_phenotype, root_type = NULL){

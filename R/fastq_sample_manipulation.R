@@ -134,7 +134,8 @@ fastq_make_metadata <- function(
   return(mytab)
 }
 
-fastq_path_swap <- function(subs, stringy){
+fastq_path_swap <- function(stringy, subs = NULL){
+  if(is.null(subs)) return(stringy)
   if(!is.list(subs)) subs <- list(subs)
   for(i in subs){
     stringy <- gsub(i[1], i[2], stringy)

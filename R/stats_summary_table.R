@@ -11,7 +11,6 @@
 #' @param cnames columns to use
 #' @param rnames rows to use
 #' @param do_log add shited log 2 of the values, default is FALSE
-#' @param indiv_values add ordered matrix at the end, default is FALSE
 #' @keywords stat_summary
 #'
 #' @return Returns a data.frame with statistics of your data
@@ -39,9 +38,14 @@ stats_summary_table <- get_stat_report <- function(
     expr_cutoff = 0,
     do_log = FALSE, # add log2 data
     datatype = "",
+    sep_str = "_",
     verbose = FALSE
   ){
   if(verbose) cat('------- Stat summary -------\n')
+
+  if(ncol(mat) == 0 || nrow(mat) == 0){
+    stop("No data given")
+  }
 
   if(is.null(rownames(mat))){
     warning('\'matrix\' should have row names')
@@ -100,7 +104,7 @@ stats_summary_table <- get_stat_report <- function(
     medians <- apply(mat, 1, function(vec) tapply(vec, groups, median, na.rm = TRUE) )
     if(length(grps) != 1) medians <- t(medians)
     medians <- data.frame(medians, check.names = FALSE);
-    colnames(medians) <- paste0(colnames(medians), '_median', datatype)
+    colnames(medians) <- paste0(colnames(medians), sep_str, 'median', datatype)
     sum_stat <- cbind(sum_stat, medians)
   }
 
@@ -110,7 +114,7 @@ stats_summary_table <- get_stat_report <- function(
     means <- apply(mat, 1, function(vec) tapply(vec, groups, Matrix::mean, na.rm = TRUE) )
     if(length(grps) != 1) means <- t(means)
     means <- data.frame(means, check.names = FALSE); colnames(means) <- grps
-    colnames(means) <- paste0(colnames(means), '_mean', datatype)
+    colnames(means) <- paste0(colnames(means), sep_str, 'mean', datatype)
     sum_stat <- cbind(sum_stat, means)
   }
 
@@ -120,7 +124,7 @@ stats_summary_table <- get_stat_report <- function(
     means <- apply(mat, 1, function(vec) tapply(vec, groups, sd, na.rm = TRUE) )
     if(length(grps) != 1) means <- t(means)
     means <- data.frame(means, check.names = FALSE); colnames(means) <- grps
-    colnames(means) <- paste0(colnames(means), '_sd', datatype)
+    colnames(means) <- paste0(colnames(means), sep_str, 'sd', datatype)
     sum_stat <- cbind(sum_stat, means)
   }
 
@@ -131,7 +135,7 @@ stats_summary_table <- get_stat_report <- function(
     if(length(grps) != 1) poscells <- t(poscells)
     poscells <- data.frame(poscells * 100, check.names = FALSE);
     colnames(poscells) <- grps
-    colnames(poscells) <- paste0(colnames(poscells), '_percentage', datatype)
+    colnames(poscells) <- paste0(colnames(poscells), sep_str, 'percentage', datatype)
     sum_stat <- cbind(sum_stat, poscells)
   }
 
@@ -140,7 +144,7 @@ stats_summary_table <- get_stat_report <- function(
     poscent <- apply(mat, 1, function(vec) tapply(vec, groups, function(cc) median(cc[cc > expr_cutoff], na.rm = TRUE) ) )
     if(length(grps) != 1) poscent <- t(poscent)
     poscent <- data.frame(poscent, check.names = FALSE);
-    colnames(poscent) <- paste0(colnames(poscent), '_medianOfPositive', datatype)
+    colnames(poscent) <- paste0(colnames(poscent), sep_str, 'medianOfPositive', datatype)
     sum_stat <- cbind(sum_stat, poscent)
   }
 
@@ -153,7 +157,7 @@ stats_summary_table <- get_stat_report <- function(
     poscent <- apply(mat, 1,function(vec) tapply(vec, groups, function(cc) mean(cc[cc > expr_cutoff], na.rm = TRUE) ) )
     if(length(grps) != 1) poscent <- t(poscent)
     poscent <- data.frame(poscent, check.names = FALSE);
-    colnames(poscent) <- paste0(colnames(poscent), '_meanOfPositive', datatype)
+    colnames(poscent) <- paste0(colnames(poscent), sep_str, 'meanOfPositive', datatype)
     sum_stat <- cbind(sum_stat, poscent)
   }
 
@@ -163,7 +167,7 @@ stats_summary_table <- get_stat_report <- function(
       quant <- apply(mat, 1, function(vec) tapply(vec, groups, quantile, probs = myq / 100, na.rm = TRUE) )
       if(length(grps) != 1) quant <- t(quant)
       quant <- data.frame(quant, check.names = FALSE)
-      colnames(quant) <- paste0(colnames(quant), '_q', myq, datatype)
+      colnames(quant) <- paste0(colnames(quant), sep_str, 'q', myq, datatype)
       return(quant)
     }))
     quants <- quants[, order(colnames(quants))]

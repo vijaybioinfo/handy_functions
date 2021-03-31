@@ -14,28 +14,31 @@ clean_feature_list <- function(
   groups = NULL,
   filterby = 'p~0', # Moment~[value] (default is p~0) as indicated in `stats_summary_table`. You can include the group name to filter by, p~0~group1.
   return_stats = FALSE,
-  v = FALSE
+  verbose = FALSE
 ){
+  if(verbose) cat("\n")
   filterby <- unlist(strsplit(x = filterby, split = "~"))
   if(is.null(groups)){
+    if(verbose) cat("Evaluating globally\n")
     groups <- rep("SingleCell", ncol(mat)); names(groups) <- colnames(mat)
     if(is.na(filterby[3])) filterby[3] <- "SingleCell"
   }
   if(is.na(filterby[3])){
-    filterby[3] <- unique(groups)[1]
+    filterby[3] <- name(sort(table(groups)))[1]
     warning("You may want to specify the group. Taking ", filterby[3], ".")
   }
-  mygenes <- unique(unlist(features)); mygenes <- mygenes[mygenes %in% rownames(mat)]
+  if(verbose) cat("Filtering by", filterby[3], "\n")
+  mygenes <- unique(unlist(features));
   void <- stats_summary_table(
-    mat = as.matrix(mat[mygenes, ]),
+    mat = as.matrix(mat[rownames(mat) %in% mygenes, ]),
     groups = groups,
     moments = filterby[1],
-    v = v
-  ); if(v) print(summary(void))
+    v = verbose
+  ); if(verbose) print(summary(void))
   passed <- rownames(void)[void[, paste0(filterby[3], moments[filterby[1]])] > as.numeric(filterby[2])]
-  if(v) str(features)
+  if(verbose) str(features)
   features <- sapply(features, function(x) x[x %in% passed], simplify = FALSE)
-  if(v) str(features)
+  if(verbose) str(features)
   if(isTRUE(return_stats)) list(stats = void, list = features) else return(features)
 }
 
@@ -51,22 +54,19 @@ signature_scoring <- function(
   confounders = "RNA.*res",
   reductions = list(pca = c('PC_1', 'PC_2'), tsne = c('tSNE_1', 'tSNE_2'), umap = c('UMAP_1', 'UMAP_2')),
   couls = c("#fffffa", "#fffeee", "#ffe080", "#ffc100", "#ff0000", "#EE0000", "#a10000", "#670000"),
-  v = FALSE
+  verbose = FALSE
 ){
-  suppressPackageStartupMessages(library(Seurat))
-  suppressPackageStartupMessages(library(cowplot))
-  theme_set(theme_cowplot())
   str_safe_remove <- function(x, word = "random123") gsub("_{1,}", "_", gsub(word, "", x))
 
-  if(v) cat("-- Signature scoring --\n")
+  if(verbose) cat("-- Signature scoring --\n")
   prefix <- dircheck(prefix)
-  if(v) cat("Output:", prefix, "\n")
+  if(verbose) cat("Output:", prefix, "\n")
 
   if(any(!confounders %in% colnames(object@meta.data))){
-    confounders <- extract_grouping_cols(metadat = object@meta.data, ckeep = confounders, maxn = 56, v = v)
+    confounders <- filters_columns(object@meta.data, include = confounders, maxn = 56, v = verbose)
   };
   confounders <- confounders[confounders %in% colnames(object@meta.data)]
-  if(v) cat("Confounders", show_commas(confounders), "\n");
+  if(verbose) cat("Confounders", show_commas(confounders), "\n");
   Idents(object) <- 'orig.ident'
 
   reductions <- reductions[names(reductions) %in% names(object@reductions)]
@@ -77,7 +77,7 @@ signature_scoring <- function(
   if(length(lsignatures)){
     for(i in 1:length(lsignatures)){
       mynameis <- sub("[[:alnum:]]{1,8}_", "", names(lsignatures[i]))
-      if(v && isTRUE(group)) cat("@", mynameis, "\n")
+      if(verbose && isTRUE(group)) cat("@", mynameis, "\n")
       if(isTRUE(group)){
         class_list <- list(
           lsignatures[grep(mynameis, names(lsignatures))]
@@ -100,40 +100,41 @@ signature_scoring <- function(
   }
   signame <- paste0(prefix, "signatures.csv")
   if(file.exists(signame)){
-    if(v) cat("Pre-computed scores\n")
+    if(verbose) cat("Pre-computed scores\n")
     signdf <- readfile(signame, stringsAsFactor = FALSE, check.names = FALSE, row.names = 1)
-    object@meta.data <- joindf(object@meta.data, signdf, v = v)
+    object@meta.data <- joindf(object@meta.data, signdf, v = verbose)
   }
   scores_cols <- unname(unlist(sapply(signature_list, function(x) c(names(x)[-1], x[[1]]) )))
   for(scoring in signature_list){
-    if(v) cat("\n@", sub("orig\\.", "", scoring[[1]]), "\n")
-    if(!scoring[[1]] %in% colnames(object@meta.data)){
+    if(verbose) cat("\n@", sub("orig\\.", "", scoring$name), "\n")
+    check_both <- c(scoring$name, names(scoring[-1])) # check both names
+    if(any(!check_both %in% colnames(object@meta.data))){
       object <- ClassifyScoring(
-        object = object, name = scoring[[1]], verbose = v,
+        object = object, name = scoring$name, verbose = verbose,
         features = scoring[head(2:length(scoring), 2)]
-      ); str(scoring)
+      ); str(scoring); str(scores_cols)
       tvar <- FetchData(object, vars = scores_cols[scores_cols %in% colnames(object@meta.data)])
       if(exists("signdf")) tvar <- joindf(tvar, signdf)
       write.csv(tvar, file = signame)
     }
 
-    if(v) cat("Plotting\n")
-    ddfplot <- FetchData(object, vars = c(scoring[[1]], names(scoring[-1]), unname(unlist(reductions)), confounders))
-    ddfplot$Signature <- as.character(ddfplot[, scoring[[1]]])
+    if(verbose) cat("Plotting\n")
+    ddfplot <- FetchData(object, vars = c(scoring$name, names(scoring[-1]), unname(unlist(reductions)), confounders))
+    ddfplot$Signature <- as.character(ddfplot[, scoring$name])
     ddfplot$Signature <- ifelse(ddfplot$Signature == "None", "No", "Yes")
     # for(i in names(scoring[-1])) ddfplot[, i] <- scales::rescale(ddfplot[, i], to = c(0, 1))
     tvar <- table(ddfplot[, 'Signature'])
     subtitl <- paste0(paste0(names(tvar), ": ", unname(tvar)), collapse = "; ")
 
-    if(v) cat(" # heatmap\n")
+    if(verbose) cat(" # heatmap\n")
     graphics.off()
-    fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring[[1]])), '_heatmap.pdf')
+    fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring$name)), '_heatmap.pdf')
     if(!is.file.finished(fname)){
       pdf(fname, width = 10, height = 12, onefile = FALSE);
       p <- try(custom_heatmap(
         object = object, # should be normalised
         rnames = unname(unlist(scoring[-1])),
-        orderby = scoring[[1]],
+        orderby = scoring$name,
         sample_it = c("orig.ident", '3000'), # can be c("column name", "-num_per_group"); or will use the first column
         scale_row = TRUE,
         categorical_col = c(confounders, "Signature"),
@@ -146,8 +147,8 @@ signature_scoring <- function(
       graphics.off()
     }
     for(redu in names(reductions)){
-      if(v) cat(" #", redu, "\n")
-      fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring[[1]])), '_', redu, '.pdf')
+      if(verbose) cat(" #", redu, "\n")
+      fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring$name)), '_', redu, '.pdf')
       if(is.file.finished(fname)) next
       p <- lapply(names(scoring[-1]), function(x){
         aesy <- aes_string(x = reductions[[redu]][1], y = reductions[[redu]][2], color = x)
@@ -160,8 +161,8 @@ signature_scoring <- function(
       print(cowplot::plot_grid(plotlist = p)); graphics.off()
     }
     for(confy in confounders){
-      if(v) cat(" -", confy, "\n")
-      fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring[[1]])), "_violin_", confy, '.pdf')
+      if(verbose) cat(" -", confy, "\n")
+      fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring$name)), "_violin_", confy, '.pdf')
       if(is.file.finished(fname)) next
       tvar <- length(table(ddfplot[, confy]))
       ddfplot[, confy] <- factormix(ddfplot[, confy])
@@ -177,6 +178,6 @@ signature_scoring <- function(
     }
   }
 
-  if(v) cat("-- --------- ------- --\n")
+  if(verbose) cat("-- --------- ------- --\n")
   return(object)
 }

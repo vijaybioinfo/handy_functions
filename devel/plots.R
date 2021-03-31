@@ -1,5 +1,13 @@
 #!/usr/bin/R
 
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(cowplot)
+})
+theme_set(theme_cowplot())
+
+# Packages: ggplot2, cowplot
+
 #' Violin Plot
 #'
 #' This function creates nice violin plots
@@ -26,7 +34,7 @@
 #' @export
 #'
 #' @examples
-# ' p <- violin(dat = iris, xax = "Species", yax = "Sepal.Length", colour_by = 'Sepal.Length')
+# ' p <- violin(dat = iris, xax = "Species", yax = "Sepal.Length")
 #'
 
 violin <- function(
@@ -54,7 +62,9 @@ violin <- function(
 
   vsetting_master <- list(width = 0.8, alpha = 0.7, trim = TRUE, adjust = 1, scale = 'width')
   #Deafault: trim = TRUE, scale = "area", adjust = 1
-  vsetting <- lapply(names(vsetting_master), function(x) ifelse(x %in% names(vsetting), vsetting[[x]], vsetting_master[[x]]) )
+  vsetting <- lapply(names(vsetting_master), function(x){
+    ifelse(x %in% names(vsetting), vsetting[[x]], vsetting_master[[x]])
+  })
   names(vsetting) <- names(vsetting_master)
 
   if(isTRUE(colour_by %in% colnames(dat))){
@@ -68,10 +78,15 @@ violin <- function(
   }; filname <- colour_by
   pct <- tapply(dat[, yax], dat[, xax], function(pop) round(sum(pop > 0, rm.na = TRUE) / length(pop) * 100, digits = 2) )
   dat$pct <- dat$pct50 <- sapply(as.character(dat[, xax]), function(X) return(pct[X]) )
+  dat$pct50[dat$pct50>50] <- 50
   means <- tapply(dat[, yax], dat[, xax], mean, na.rm = TRUE)
   dat$means <- dat$mean <- sapply(as.character(dat[, xax]), function(X) return(means[X]) )
 
-  if(is.null(couls)) couls = c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','#EE0000','#b30000', '#670000')
+  if(is.null(couls)) couls = 1
+  couls_opt = list(
+    c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','#EE0000','#b30000', '#670000'),
+    c('#fffffa', '#fff7cf', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'))
+  if(is.numeric(couls)) couls = couls_opt[[couls]]
   brks <- NULL
   master_brks = list( # create a master for breaks in mean and percentage
     pct = list(filname = '%+', brks = c(0, 10, 20, 40, 60, 80, 100)),
@@ -86,7 +101,7 @@ violin <- function(
   if(isTRUE(colour_by %in% names(master_brks))){
     filname <- master_brks[[colour_by]][[1]]
     brks <- master_brks[[colour_by]][[2]]
-  }; if(colour_by == "pct50") colour_by <- "pct"
+  }; #if(colour_by == "pct50") colour_by <- "pct"
 
   if(isTRUE(chilli) || is.numeric(chilli)){
     if(isTRUE(chilli)) chilli <- 0
@@ -120,7 +135,8 @@ violin <- function(
     if(is.null(brks)){
       brks <- if(colour_by == "pct") c(0, dat[, colour_by], 100) else dat[, colour_by]
       brks <- make_breaks(brks, n = length(couls))
-    }; couls <- colorRampPalette(couls, space = 'Lab')(length(brks))
+    };# dat[dat[, colour_by] > max(brks), colour_by] <- max(brks)
+    couls <- colorRampPalette(colors = couls, space = 'Lab')(length(brks))
     lbrks <- as.character(round(brks, 2))
     if(any(grepl("\\-", lbrks))) lbrks <- ifelse(!grepl("\\-", lbrks), paste0("+", lbrks), lbrks)
     lbrks[grepl("\\+0$", lbrks)] <- "  0"
@@ -129,7 +145,10 @@ violin <- function(
     dp <- dp + guides(color = guide_colorbar(barwidth = 0.8, barheight = 6)) +
         do.call(scale_color_gradientn, arg_list) +
         do.call(scale_fill_gradientn, arg_list)
-  }else if(length(unique(dat[, xax])) < 10) dp <- dp + scale_fill_brewer(palette = "Set1")
+  }else if(length(unique(dat[, colour_by])) < 10){
+    dp <- dp + scale_fill_brewer(palette = "Set1")
+    dp <- dp + scale_color_brewer(palette = "Set1")
+  }
   dp
 }
 
@@ -177,8 +196,7 @@ getlegend <- function(
   myfile = NULL
 ){
   # https://wilkelab.org/cowplot/articles/shared_legends.html
-  legend <- cowplot::get_legend(x)
-  graphics.off(); #tmp <- file.remove('Rplots.pdf')
+  legend <- cowplot::get_legend(x)#graphics.off();
   if(!is.null(myfile)){
     pdf(myfile, 5, 5)
     grid.newpage()
@@ -189,7 +207,7 @@ getlegend <- function(
   return(legend)
 }
 addlegend <- function(x){
-  p <- getlegend(x[[1]]); x <- lapply(x, function(y) y + NoLegend() ); x$legend <- p
+  p <- getlegend(x[[1]]); x <- lapply(x, function(y) y + Seurat::NoLegend() ); x$legend <- p
   return(x)
 }
 
@@ -210,6 +228,8 @@ custom_heatmap <- function(
   topz = NULL,
   verbose = FALSE,
   type = c("NMF", "pheatmap"),
+  cluster_cols_override = FALSE,
+  do_log = FALSE,
   ... # arguments for NMF::aheatmap or pheatmap
 ){
   type <- match.arg(type)
@@ -222,55 +242,58 @@ custom_heatmap <- function(
   cnames <- show_found(cnames, rownames(annoc), verbose = FALSE)
   cnames <- show_found(cnames, colnames(object), verbose = FALSE)
   if(!any(categorical_col %in% colnames(annoc))){
-    categorical_col <- extract_grouping_cols(annoc, ckeep = categorical_col, v = verbose)
+    categorical_col <- filters_columns(annoc, include = categorical_col, v = verbose)
   }; categorical_col <- categorical_col[categorical_col %in% colnames(annoc)]
   if(is.null(orderby)) orderby <- categorical_col[1]
 
   if(isTRUE(sample_it[1]) || is.character(sample_it)){
     nsample <- if(length(sample_it) > 1) as.numeric(sample_it[2]) else NULL
     sample_it <- if(isTRUE(sample_it[1])) categorical_col[1] else sample_it[1]
-    cnames <- sample_grp(annot = annoc, cname = sample_it, maxln = nsample, v = verbose)
+    cnames <- sample_even(annot = annoc, cname = sample_it, maxln = nsample, v = verbose)
   }
 
   if(verbose){
     cat("\nCategories:", show_commas(categorical_col), "\n")
     cat("Features:", show_commas(rnames), "\n")
     cat("Cells:", show_commas(cnames), "\n")
-    cat("Variables:", show_commas(colnames(annoc)), "\n\n")
+    cat("Variables in metadata:", show_commas(colnames(annoc)), "\n\n")
   }
 
-  tvar <- unique(c(orderby, categorical_col, use_mean))
+  tvar <- unique(c(orderby, categorical_col, use_mean)); tvar <- tvar[is.character(tvar)]
   annoc <- annoc[cnames, tvar[tvar %in% colnames(annoc)], drop = FALSE]
+  for(i in colnames(annoc)) if(is.factor(annoc[, i])) annoc[, i] <- droplevels(annoc[, i])
   object <- object[, cnames]
+  if(verbose){ str(annoc); str(object, max.level = 1) }
 
-  if(is.character(use_mean) || isTRUE(use_mean)){
+  if(use_mean %in% colnames(annoc) || isTRUE(use_mean)){
     if(casefold(class(object)) == 'seurat'){
       if(verbose) cat("Taking only the matrix from Seurat object\n")
-      object <- expm1(object@assays$RNA@data)
+      object <- expm1(object@assays$RNA@data)[rnames, rownames(annoc)]
     }
     use_mean <- if(isTRUE(use_mean[1])) head(colnames(annoc)[sapply(annoc, is.character)], 1) else use_mean
-    annoc$index123 <- do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_"))
     if(verbose) cat("Means:", paste0(use_mean, collapse = ", "), "\n")
+    annoc$index123 <- do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_"))
     means <- stats_summary_table(
       mat = object,
+      rnames = rnames,
       groups = make_list(annoc, colname = 'index123', grouping = TRUE),
       moments = "mn",
       v = verbose
     )
     colnames(means) <- gsub("_mean", "", colnames(means))
-    annoc <- annoc[!duplicated(annoc$index123), ]
+    # annoc <- annoc[!duplicated(annoc$index123), ]
+    tvar <- reshape2::melt(table(annoc[, rev(colnames(annoc)), drop = FALSE]))
+    tvar <- tvar[tvar$value > 0, -ncol(tvar), drop = FALSE]
+    for(i in colnames(annoc)) if(is.factor(annoc[, i])) tvar[, i] <- factor(as.character(tvar[, i]), levels(annoc[, i]))
+    annoc <- summarise_table(tvar)
     annoc <- annoc[, !colnames(annoc) %in% "index123", drop = FALSE]
-    tvar <- sapply(annoc, function(x) length(unique(x)) )
-    if(verbose){ print(tvar); str(annoc) }
-    annoc <- annoc[, tvar > 1, drop = FALSE]
-    rownames(annoc) <- do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_"))
-    means <- means[, rownames(annoc)]
-    head(annoc); head(means)
-    object <- log2(as.matrix(means) + 1)
+    object <- as.matrix(means[, rownames(annoc)])
+    if(verbose){ str(annoc); str(object) }
   }
-  if(!is.null(orderby)) annoc[, orderby[1]] <- droplevels(annoc[, orderby[1]])
 
-  if(!is.numeric(annoc[, orderby[1]]) && (length(orderby) > 1)){
+  if(verbose) cat("Ordering:", orderby)
+  if(length(orderby) > 1 && any(c("pca", "hc") %in% orderby)){
+    if(verbose) cat("\nbased on expression\n")
     tvar <- order_df(
       annot = annoc,
       order_by = ifelse(length(orderby[-1]) == 0, "pca", orderby[-1]),
@@ -282,13 +305,15 @@ custom_heatmap <- function(
         }else{ object[rnames, rownames(annoc)] },
       verbose = verbose
     )
-    str(tvar)
     annoc <- annoc[unname(unlist(tvar)), ]
   }else{
-    annoc <- annoc[order(annoc[, orderby]), , drop = FALSE] # will follow the factors order
+    if(verbose) cat("\norder(annoc[, ", orderby, "])\n")
+    # annoc <- annoc[order(annoc[, orderby]), , drop = FALSE] # will follow the factors order
+    data.table::setorderv(x = annoc, cols = orderby)
   }
 
   tvar <- sapply(annoc, is.character) | sapply(annoc, is.factor)
+  if(verbose) cat("Getting colours:", show_commas(colnames(annoc)[tvar]), "\n")
   anncolist <- lapply(annoc[, tvar, drop = FALSE], function(x){
     v2cols(select = x, sour = couls, v = FALSE)
   })
@@ -298,16 +323,20 @@ custom_heatmap <- function(
     tvar <- data.frame(
       list(...)[[which(names(list(...)) %in% row_params)]],
       check.names = FALSE, stringsAsFactors = FALSE
-    )
+    ); str(tvar)
     anncolist <- c(anncolist,
-      lapply(tvar[, sapply(tvar, is.character), drop = FALSE], function(x){
+      lapply(tvar[, !sapply(tvar, is.numeric), drop = FALSE], function(x){
         v2cols(select = x, sour = couls, v = verbose)
       })
     )
   }
-  if(verbose) str(anncolist)
+  if(verbose){ cat("Colors:\n"); str(anncolist) }
 
   object <- object[rnames, rownames(annoc)]
+  if(isTRUE(do_log) && class(object) == "matrix"){
+    if(verbose) cat("log2(x+1)\n")
+    object <- log2(object + 1)
+  }
 
   if(verbose) cat("Scaling\n")
   if(isTRUE(scale_row) && (casefold(class(object)) == 'seurat')){
@@ -331,7 +360,7 @@ custom_heatmap <- function(
   }
 
   nnpcs <- min(c(3, dim(mat_to_plot) - 1))
-  thesegenes <- if((isTRUE(feature_order) || as.character(feature_order) == "pca") && (casefold(class(object)) == 'seurat')){
+  thesegenes <- if((as.character(feature_order) == "pca") && (casefold(class(object)) == 'seurat')){
     if(verbose) cat("Ordering features Seurat PCA\n")
     object <- RunPCA(object = object, npcs = nnpcs, features = rnames, verbose = verbose)
     rev(names(sort(Loadings(object, "pca")[, 1], decreasing = FALSE)))
@@ -374,7 +403,7 @@ custom_heatmap <- function(
     if(is.na(feature_order) || is.character(feature_order)) feature_order <- FALSE
     pheatmap(
       mat = mat_to_plot,
-      scale = "none", cluster_rows = feature_order, cluster_cols = FALSE,
+      scale = "none", cluster_rows = feature_order, cluster_cols = cluster_cols_override,
       annotation_col = annoc, annotation_colors = anncolist,
       color = mypalette(length(palettebreaks) - 1),
       breaks = palettebreaks,
@@ -384,6 +413,28 @@ custom_heatmap <- function(
     )
   }
 }
+
+plot_rm_layer <- function(gp, lays = "ext", verbose = FALSE){
+  if(verbose) cat("Layers:", sapply(gp$layers, function(x) class(x$geom)[1] ), "\n")
+  tvar <- sapply(gp$layers, function(x) !grepl(lays, class(x$geom)[1], ignore.case = TRUE) )
+  gp$layers <- gp$layers[tvar]
+  gp
+}
+plot_blank <- function(gp, lays = "ext", ...){
+  if("patchwork" %in% class(gp) && isTRUE(length(gp$patches$plots) > 0)){
+    for(i in 1:length(gp$patches$plots)){
+      y <- gp$patches$plots[[i]]; if(length(y$layers) == 0) next
+      print(class(y))
+      print(names(y))
+      gp$patches$plots[[i]] = plot_rm_layer(y, lays = lays, ...) + theme_axes()
+    }
+    gp
+  }else{
+    plot_rm_layer(gp, lays = lays, ...) + theme_axes()
+  }
+}
+
+plot_flush <- function(x){ graphics.off(); invisible(file.remove('Rplots.pdf')) }
 
 ## barplot
 plot_pct <- function(
@@ -399,18 +450,29 @@ plot_pct <- function(
   require(dplyr)
   type <- match.arg(type)
   cats <- table(x[, groups[1]])
-  ddf <- ddf2 <- table(x[, groups])
+  dcount <- dnorm <- table(x[, groups])
   if(v) cat("Type of plot:", type, "\n")
   if(v) cat("Proportions of:", groups[1], "\n")
   if(v) cat("Per:", groups[2], "\n")
-  if(isTRUE(print_ptables)) print(ddf2)
+  if(isTRUE(print_ptables)) print(dnorm)
   if(isTRUE(normalise)) normalise <- 1
+  if(is.character(normalise)) normalise <- which(groups == normalise)
+  is_normalised <- NULL
   if(is.numeric(normalise)){
-    if(v) cat("Normalising by", groups[normalise], "\n")
-    ddf2 <- (ddf2 * (min(table(x[, groups[normalise]])) / rowSums(ddf2))) # factorising/normalising
+    is_normalised = "Normalised"
+    if(v) cat("Normalising by", groups[normalise], "\n") # changed 2021-02-11
+    # dnorm <- (dnorm * (min(table(x[, groups[normalise]])) / rowSums(dnorm))) # factorising/normalising
+    denominator <- min(table(x[, groups[normalise]]))
+    dnorm <- apply(
+      X = dnorm,
+      MARGIN = normalise,
+      function(x){
+        y <- x * (denominator / sum(x))
+    }); if(normalise == 1) dnorm <- t(dnorm)
+    if(isTRUE(print_ptables)) print(apply(dnorm, normalise, sum))
   }
-  if(isTRUE(print_ptables)) print(ddf2)
-  prop_table <- prop.table(ddf2, 2); if(isTRUE(print_ptables)) print(prop_table)
+  if(isTRUE(print_ptables)) print(dnorm)
+  dprop <- prop.table(dnorm, 2); if(isTRUE(print_ptables)) print(dprop)
   mylevels <- if(is.numeric(orderby) || all(orderby %in% names(cats))){
     direct = FALSE
     orderby <- if(is.numeric(orderby)){
@@ -420,39 +482,41 @@ plot_pct <- function(
       orderby
     }
     if(v) cat("Sorting by", orderby, "\n")
-    tvar <- if(length(orderby) > 1) colSums(prop_table[orderby, ]) else prop_table[orderby, ]
+    tvar <- if(length(orderby) > 1) colSums(dprop[orderby, ]) else dprop[orderby, ]
     names(sort(tvar, decreasing = direct))
   }else{ NULL }
-  prop_table <- round(as.data.frame.matrix(rbind(ddf[, colnames(prop_table)], prop_table)), 2)
-  prop_table <- cbind(
-    Group = rep(rownames(ddf2), times = 2),
-    Type = rep(c("Count", "Percentage"), each = nrow(ddf2)),
-    prop_table
+  if(!is.null(is_normalised)) dprop <- rbind(dnorm, dprop)
+  dprop <- rbind(dcount[, colnames(dprop)], dprop)
+  dprop <- round(as.data.frame.matrix(dprop), 2)
+  dprop <- cbind(
+    Group = rep(rownames(dnorm), times = ifelse(is.null(is_normalised), 2, 3)),
+    Type = rep(c("Count", is_normalised, "Percentage"), each = nrow(dnorm)),
+    dprop
   )
-  rownames(prop_table) <- NULL
+  rownames(dprop) <- NULL
 
-  ddf2 <- reshape2::melt(ddf2)
-  ddf2$fill_group <- if(!is.factor(x[, groups[1]])) factormix(ddf2[, 1]) else factor(ddf2[, 1], levels(x[, groups[1]]))
-  ddf2$in_group <- if(!is.null(mylevels)){
-    factor(ddf2[, 2], mylevels)
+  dnorm <- reshape2::melt(dnorm)
+  dnorm$fill_group <- if(!is.factor(x[, groups[1]])) factormix(dnorm[, 1]) else factor(dnorm[, 1], levels(x[, groups[1]]))
+  dnorm$in_group <- if(!is.null(mylevels)){
+    factor(dnorm[, 2], mylevels)
   }else if(!is.factor(x[, groups[2]])){
-    factormix(ddf2[, 2])
+    factormix(dnorm[, 2])
   }else{
-    factor(ddf2[, 2], levels(x[, groups[2]]))
+    factor(dnorm[, 2], levels(x[, groups[2]]))
   }
-  ddf2 <- ddf2[, -c(1:2)]
+  dnorm <- dnorm[, -c(1:2)]
   if(type == "bar"){
-    p <- ggplot(data = ddf2, aes(x = in_group, y = value, fill = fill_group)) +
+    p <- ggplot(data = dnorm, aes(x = in_group, y = value, fill = fill_group)) +
       geom_bar(stat = "identity", position = "fill") +
       scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
       labs(fill = make_title(groups[1]), y = "Percentage")
   }else if(type == "pie"){
-    p <- ggplot(data = ddf2, aes(x = "", y = value)) +
+    p <- ggplot(data = dnorm, aes(x = "", y = value)) +
     geom_bar(aes(fill = fill_group), stat = "identity", position = "fill") +
     coord_polar("y", start=0) + labs(x = NULL, y = NULL) + scale_y_reverse() +
-    facet_wrap(~in_group, ncol = make_grid(unique(ddf2$in_group))[2])
+    facet_wrap(~in_group, ncol = make_grid(unique(dnorm$in_group))[2])
   }else{
-    prop_table <- thisdf <- ddf2 %>% group_by(in_group) %>%
+    thisdf <- dnorm %>% group_by(in_group) %>%
       mutate(
         fraction = value / sum(value),
         ymax = cumsum(fraction),# top of each rectangle
@@ -463,12 +527,145 @@ plot_pct <- function(
     p <- ggplot(thisdf, aes(ymax = ymax, ymin = ymin, xmax = 4, xmin = 3, fill = fill_group)) +
       geom_rect() +
       coord_polar(theta = "y") + # Try to remove that to understand how the chart is built initially
-      facet_wrap(~in_group, ncol = make_grid(unique(ddf2$in_group))[2]) +
+      facet_wrap(~in_group, ncol = make_grid(unique(dnorm$in_group))[2]) +
       xlim(c(2, 4))
   }
   p <- p + theme_minimal() + labs(x=NULL)
-  if(isTRUE(return_table)) return(list(plot = p, table = prop_table))
+  if(isTRUE(return_table)) return(list(plot = p, table = dprop))
   return(p)
+}
+
+### Aesthetic/ggplot ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+rotatedAxisElementText = function(angle, position = 'x', cnter = 0.5){
+  angle     = angle[1];
+  position  = position[1]
+  positions = list(x=0,y=90,top=180,right=270)
+  if(!position %in% names(positions))
+    stop(sprintf("'position' must be one of [%s]",paste(names(positions),collapse=", ")),call.=FALSE)
+  if(!is.numeric(angle))
+    stop("'angle' must be numeric",call.=FALSE)
+  rads  = (angle - positions[[ position ]])*pi/180
+  hjust = cnter*(1 - sin(rads))
+  vjust = cnter*(1 + cos(rads))
+  element_text(angle = angle,vjust = vjust, hjust = hjust)
+}
+grid_theme <- function(){
+  theme_classic() + theme(
+        panel.background = element_blank(),
+        panel.grid.major = element_blank(),
+        strip.text.x = element_text(face = 'bold'),
+        strip.background = element_rect(fill = "#FFFFFF", linetype = 0))
+}
+
+# set legend text
+SetLegendTextGG <- function(x = 12, y = "bold") {
+  return(theme(legend.text = element_text(size = x, face = y)))
+}
+
+# set legend point size
+SetLegendPointsGG <- function(x = 6) {
+  return(guides(colour = guide_legend(override.aes = list(size = x))))
+}
+
+# nice theme
+mytheme <- ggplot2::theme_classic() +
+ ggplot2::theme(
+    axis.text.x = element_text(face = "bold", hjust = 1, angle = 45),
+    axis.title.x = element_text(face = "bold"),#, colour = "#990000"),
+    axis.text.y = element_text(angle = 0, face = "bold"),
+    axis.title.y = element_text(face = "bold"),#, colour = "#990000"),
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    strip.text = element_text(face = 'bold', size = 10),
+    strip.background = element_rect(fill = "#FFFFFF", linetype = 1, size = 0.001)
+  )
+
+# Quadrant counts
+# inspired from
+# https://rdrr.io/cran/ggpmisc/src/R/stat-quadrant-counts.R
+# https://cran.r-project.org/web/packages/ggplot2/vignettes/extending-ggplot2.html
+quadrant_loc = function(qcut, center = FALSE) {
+  qposition = list()
+  for(i in 1:ncol(qcut)){
+    for(j in 1:nrow(qcut)){
+      y <- sapply(X = unlist(dimnames(qcut[j, i, drop = FALSE])),
+        FUN = function(s){
+          patty_i <- if(center) "\\[|\\]|\\(|\\)" else if(grepl("\\)", s)) ",.*|\\[" else ".*,|\\]"
+          z <- gsub(pattern = patty_i, replacement = "", x = s)
+          if(center) sapply(strsplit(z, ","), function(w) mean(as.numeric(w)) ) else as.numeric(z)
+      })
+      qposition[[paste0(j,i)]] <- y
+    }
+  }
+  qposition <- data.frame(t(sapply(qposition, c)))
+  if(!isTRUE(center)){
+    qposition <- sapply(qposition, function(x) x + (max(scale(x)) * .2) )
+    qposition <- data.frame(qposition)
+  }; colnames(qposition) <- names(dimnames(qcut))
+  qposition
+}
+quadrant_fun = function(
+  data, scales, params,
+  xintercept = 0, yintercept = 0, type = "count", center = FALSE
+) {
+  qlimits = list(x = xintercept, y = yintercept)
+  names(qlimits) <- c("x", "y")
+  qcounts <- table(lapply(
+    X = setNames(names(qlimits), names(qlimits)),
+    FUN = function(x) Hmisc::cut2(x = data[, x], cuts = qlimits[[x]])
+  ))
+  qposition <- quadrant_loc(qcut = qcounts, center = center)
+  qposition$count <- if(type == "percent"){
+    scales::percent(c(qcounts / sum(qcounts)))
+  }else{ c(qcounts) }
+  qposition
+}
+
+StatQuadrant <- ggproto(
+  "StatQuadrant", Stat,
+  required_aes = c("x", "y"),
+  compute_panel = quadrant_fun,
+  default_aes = ggplot2::aes(
+    x = stat(x), y = stat(x),
+    label = sprintf("%s", stat(count))
+  )
+)
+
+stat_quadrant <- function (
+  mapping = NULL, data = NULL, geom = "text", position = "identity",
+  xintercept = 0, yintercept = 0, type = "count", center = FALSE,
+  na.rm = FALSE, show.legend = NA,
+  inherit.aes = TRUE, ...
+) {
+  ggplot2::layer(
+    stat = StatQuadrant, data = data, mapping = mapping,
+    geom = geom, position = position, show.legend = show.legend,
+    params = list(
+      na.rm = na.rm, xintercept = xintercept, yintercept = yintercept, type = type, center = center, ...
+    )
+  )
+}
+
+plots_add_quadrants = function(
+  plot, limits = list(0, 0), ...
+) {
+  plot +
+    geom_vline(xintercept = limits[[1]], linetype = "dashed", color = "gray50") +
+    geom_hline(yintercept = limits[[2]], linetype = "dashed", color = "gray50") +
+    stat_quadrant(xintercept = limits[[1]], ,yintercept = limits[[2]], ...)
+}
+
+plots_squared <- function(gp, column_names = NULL, limit = NULL, verbose = FALSE){
+  column_map <- gsub("~", "", as.character(gp$mapping))
+  if(verbose) cat("Mapping:", paste(column_map, collapse = ", "), "\n")
+  if(is.null(column_names)) column_names <- column_map[1:2]
+  if(verbose) cat("Using:", paste(column_names, collapse = ", "), "\n")
+  dff <- gp$data[, column_names]
+  if(all(sapply(dff, is.numeric))){
+    if(!is.numeric(limit)) limit <- max(abs(dff), na.rm = TRUE)
+    if(verbose) cat("Squared:", limit, "\n")
+    gp <- gp + xlim(c(-limit, limit)) + ylim(c(-limit, limit))
+  }
+  gp
 }
 
 ### Utilities ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
