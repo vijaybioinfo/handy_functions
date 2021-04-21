@@ -11,7 +11,7 @@ source("/home/ciro/scripts/handy_functions/devel/file_reading.R") # readfile
 source("/home/ciro/scripts/handy_functions/devel/overlap.R") # overlap_list
 source("/home/ciro/scripts/handy_functions/devel/plots.R") # make_title
 
-## Initial signatures
+### Initial signatures ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 fnames = c(
   "/home/ciro/simon/info/gsea_lists_extended.csv",
   "~/asthma_pjs/info/trm_suptab2Lung_clarke.csv",
@@ -26,7 +26,7 @@ signatures_vijaylab <- unlist(signatures_vijaylab, recursive = FALSE)
 signatures_vijaylab <- lapply(signatures_vijaylab, function(x){ y <- x[x != ""]; y[!is.na(y)] })
 str(signatures_vijaylab)
 
-## COVID-19 CD8 paper
+### COVID-19 CD8 paper ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 signaturesl <- read.csv("/home/ciro/covid19/info/tcell_cd8story_signatures.csv", stringsAsFactor = FALSE)
 signaturesl <- as.list(signaturesl)
 signaturesl <- signaturesl[!grepl("tcell_cytotoxic_guo|arnon|dixhaust", names(signaturesl))]
@@ -42,7 +42,7 @@ tem_signatures <- lapply(as.list(tem_signatures), function(x){ # removing NAs an
 signatures_cd8covid <- c(tem_signatures, signaturesl)
 str(signatures_cd8covid)
 
-## More signatures from Preethi
+### More signatures from Preethi ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 fnames = list.files(path = '/home/ciro/preethi/info/tem_signatures_scrnaseq', pattern = 'txt', full.names = TRUE)
 mynames <- make_title(gsub("&|,|.txt|genes|from|pathway", "", basename(fnames), ignore.case = TRUE))
 mynames <- casefold(gsub(" ", "_", mynames))
@@ -51,7 +51,19 @@ signatures_tem <- unlist(signatures_tem, recursive = FALSE)
 names(signatures_tem) <- mynames
 str(signatures_tem)
 
-## check with previous object
+### From the internet ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# extra_signatures = sigPathway::importGeneSets(fileNames = "GMT, GMX, GRP, and XML")
+# https://cran.r-project.org/web/packages/msigdbr/vignettes/msigdbr-intro.html
+urls = "http://www.gsea-msigdb.org/gsea/msigdb/download_geneset.jsp?geneSetName=KRAS.600.LUNG.BREAST_UP.V1_UP&fileType=gmx"
+msigdbr::msigdbr_species()
+h_gene_sets = msigdbr::msigdbr(species = "Homo sapiens")
+h_gene_sets
+selected_set = grep(pattern = "LUNG_UP", h_gene_sets[['gs_name']], ignore.case = TRUE)
+selected_set = h_gene_sets[['gs_name']] %in% "KRAS.LUNG_UP.V1_UP"
+table(h_gene_sets[['gs_name']][selected_set])
+extra_signatures = make_list(data.frame(h_gene_sets[selected_set, ]), "gs_name", "gene_symbol")
+
+### check with previous object ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 signatures_vijaylab0 = readfile("/home/ciro/scripts/handy_functions/data/signatures_vijaylab.rdata")
 signatures_cd8covid0 = readfile("/home/ciro/scripts/handy_functions/data/signatures_cd8covid.rdata")
 signatures_tem0 = readfile("/home/ciro/scripts/handy_functions/data/signatures_tem.rdata")
@@ -60,6 +72,7 @@ names(signatures_cd8covid0)[!names(signatures_cd8covid0) %in% names(signatures_c
 names(signatures_tem0)[!names(signatures_tem0) %in% names(signatures_tem)]
 # all cool!
 
+### Merging ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 signatures_vijay_db = c(signatures_vijaylab, signatures_cd8covid, signatures_tem)
 length(names(signatures_vijay_db)) == length(unique(names(signatures_vijay_db))) # no repeated names
 signatures_vijay_db_ov = sapply(
