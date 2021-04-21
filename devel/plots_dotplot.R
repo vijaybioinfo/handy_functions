@@ -83,6 +83,7 @@ dot_plot = function(
   scale_fun = "radius", # 'radius' is used by Seurat::DotPlot
   features_position = "left",
   values_trans = c, # expm1
+  values_exprthr = 0, # expm1
   verbose = FALSE
 ){
   suppressPackageStartupMessages({
@@ -121,7 +122,7 @@ dot_plot = function(
     slice <- efeatures[efeatures$id == ident, -ncol(efeatures), drop = FALSE]
     as.data.frame(list(
       count = apply(X = slice, MARGIN = 2, FUN = function(x) mean(x = values_trans(x)) ),
-      pct = apply(X = slice, MARGIN = 2, FUN = function(x) mean(x = x > 0) ),
+      pct = apply(X = slice, MARGIN = 2, FUN = function(x) mean(x = values_trans(x) > values_exprthr) ),
       Gene = colnames(slice), cluster = ident
     ))
   })

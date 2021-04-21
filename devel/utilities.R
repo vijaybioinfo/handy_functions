@@ -29,14 +29,27 @@ dirnamen <- function(x, n = 1){
 }
 
 # Archive files/folders
-file.archive = function(pattern, name = "archive/"){
+file.archive = function(pattern, name = "archive/", exclude = NULL){
   # format(Sys.time(), '%Y_%m_%d/')
   outdir = paste0(name, Sys.Date(), "/")
   dir.create(outdir, recursive = TRUE)
-  y <- list.files(pattern = pattern)
-  if(length(y)){
-    command = paste("mv", y, outdir)
-    lapply(command, system, invisible = TRUE)
+  y <- list.files(
+    path = dirname(pattern),
+    pattern = basename(pattern),
+    full.names = TRUE
+  )
+  if(!is.null(exclude)) y <- y[!grepl(pattern = exclude, x = y)]
+  if(length(y)){ # wil try to mirror the folder tree
+    command = paste0("mv ", y, " ", outdir, dirname(y), "/"); cat(command, sep = "\n")
+    ask <- if(interactive()) readline("Press 1[ENTER] to move file(s): ") else 1
+    if(ask == 1){
+      lapply(1:length(y), function(x){
+        outdir_i = paste0(outdir, dirname(y[x]), "/")
+        if(!dir.exists(outdir_i)) dir.create(outdir_i)
+        command_i = paste("mv", y[x], outdir_i); cat(command_i, sep = "\n")
+        system(command_i)
+      })
+    }
   }; invisible(x = NULL)
 }
 
@@ -220,19 +233,27 @@ column_collapse <- function(metab, rname = 1, verbose = FALSE){
 }
 
 # Summarises a table by the complement of a column
-summarise_table = function(x, column = colnames(x)[1], sep = "|"){
+summarise_table = function(
+  x,
+  column = colnames(x)[1],
+  sep = "|",
+  verbose = FALSE
+){
+  if(verbose) str(x)
+  if(verbose) cat("Column:", column, "\n")
   x[, column] <- factormix(x[, column])
   summarised <- if(ncol(x) == 1){
     return(x)
   }else{
+    if(verbose) cat("Summarising:", levels(x = x[, column]), "\n")
     y <- lapply(X = setNames(levels(x = x[, column]), levels(x = x[, column])),
       FUN = function(ident) {
-        slice <- x[x[, column] == ident, , drop = FALSE]
+        slice <- x[x[, column] == ident, , drop = FALSE]; if(verbose) cat(".")
         z <- data.frame(lapply(setNames(2:ncol(slice), colnames(slice)[-1]), function(i){
           y <- slice[, i]; if(is.factor(y)) y <- droplevels(y)
           if(!is.numeric(y)) paste0(levels(factormix(y)), collapse = sep) else mean(y)
         })); z[, column] <- ident; z
-    }); #y <- data.frame(reshape2::melt(data.table::rbindlist(y)));
+    }); if(verbose) cat("\n"); #y <- data.frame(reshape2::melt(data.table::rbindlist(y)));
     y <- as.data.frame(data.table::rbindlist(y))
     y <- y[, ncol(y):1]; rownames(y) <- y[, 1]
     for(i in colnames(x)) if(is.factor(x[, i])) y[, i] <- factor(as.character(y[, i]), levels(x[, i]))
@@ -568,7 +589,7 @@ order_df <- function(
         names(pc1) <- mynames; rev(names(sort(pc1, decreasing = T)))
       }, hc = {
         smat <- t(mat[mygenes, mynames])
-        hc1 <- hclust(dist(smat, method = 'euclidean'), method = 'average')
+        hc1 <- hclust(dist(smat))
         hc1$labels[hc1$order]
       }, mean = {
         names(sort(colMeans(as.matrix(mat[mygenes, mynames])), decreasing = T))

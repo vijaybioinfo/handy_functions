@@ -47,7 +47,6 @@ violin <- function(
   vsetting = NULL,
   chilli = FALSE
 ){
-
   if(is.null(colour_by)) colour_by <- xax
   if(is.numeric(xax)) xax <- colnames(dat)[xax]
   if(is.numeric(yax)) xax <- colnames(dat)[yax]
@@ -77,6 +76,7 @@ violin <- function(
     }
   }; filname <- colour_by
   pct <- tapply(dat[, yax], dat[, xax], function(pop) round(sum(pop > 0, rm.na = TRUE) / length(pop) * 100, digits = 2) )
+  print(pct); pct[pct>100] <- 100
   dat$pct <- dat$pct50 <- sapply(as.character(dat[, xax]), function(X) return(pct[X]) )
   dat$pct50[dat$pct50>50] <- 50
   means <- tapply(dat[, yax], dat[, xax], mean, na.rm = TRUE)
@@ -230,6 +230,7 @@ custom_heatmap <- function(
   type = c("NMF", "pheatmap"),
   cluster_cols_override = FALSE,
   do_log = FALSE,
+  return_objects = FALSE,
   ... # arguments for NMF::aheatmap or pheatmap
 ){
   type <- match.arg(type)
@@ -272,7 +273,7 @@ custom_heatmap <- function(
     }
     use_mean <- if(isTRUE(use_mean[1])) head(colnames(annoc)[sapply(annoc, is.character)], 1) else use_mean
     if(verbose) cat("Means:", paste0(use_mean, collapse = ", "), "\n")
-    annoc$index123 <- do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_"))
+    annoc$index123 <- paste0("X", do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_")))
     means <- stats_summary_table(
       mat = object,
       rnames = rnames,
@@ -338,6 +339,9 @@ custom_heatmap <- function(
     object <- log2(object + 1)
   }
 
+  objects2return = list()
+  objects2return$annotation_col = annoc
+
   if(verbose) cat("Scaling\n")
   if(isTRUE(scale_row) && (casefold(class(object)) == 'seurat')){
     regress <- regress[regress %in% colnames(object@meta.data)]
@@ -356,6 +360,7 @@ custom_heatmap <- function(
       if(verbose) cat("Expression matrix\n")
       mat_to_plot = object; object = "tiny"; gc()
     }
+    objects2return$matrix = mat_to_plot
     mat_to_plot <- t(scale(t(mat_to_plot)))
   }
 
@@ -375,6 +380,7 @@ custom_heatmap <- function(
   feature_order <- if(as.character(feature_order[1]) == "hclust"){
     if(verbose) cat("Ordering based on hierarchical ordering\n"); TRUE
   }else{ NA }
+  objects2return$features = feature_order
 
   if(verbose) cat("Creating heatmap plot\n")
   thesegenes <- c(thesegenes[thesegenes %in% rnames], rnames[!rnames %in% thesegenes])
@@ -390,7 +396,7 @@ custom_heatmap <- function(
 
   if(type == "NMF"){
     cat("Using NMF\n")
-    NMF::aheatmap(
+    y <- NMF::aheatmap(
       mat_to_plot,
       scale = 'none', Rowv = feature_order, Colv = NA,
       annCol = annoc, annColors = anncolist,
@@ -401,7 +407,7 @@ custom_heatmap <- function(
     cat("Using pheatmap\n")
     source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/pheatmapCorrection.R')
     if(is.na(feature_order) || is.character(feature_order)) feature_order <- FALSE
-    pheatmap(
+    y <- pheatmap(
       mat = mat_to_plot,
       scale = "none", cluster_rows = feature_order, cluster_cols = cluster_cols_override,
       annotation_col = annoc, annotation_colors = anncolist,
@@ -412,6 +418,10 @@ custom_heatmap <- function(
       ...
     )
   }
+
+  if(isTRUE(return_objects)){
+    return(objects2return)
+  }else{ return(y) }
 }
 
 plot_rm_layer <- function(gp, lays = "ext", verbose = FALSE){
@@ -645,7 +655,7 @@ stat_quadrant <- function (
   )
 }
 
-plots_add_quadrants = function(
+plot_add_quadrants = plots_add_quadrants = function(
   plot, limits = list(0, 0), ...
 ) {
   plot +
@@ -654,7 +664,7 @@ plots_add_quadrants = function(
     stat_quadrant(xintercept = limits[[1]], ,yintercept = limits[[2]], ...)
 }
 
-plots_squared <- function(gp, column_names = NULL, limit = NULL, verbose = FALSE){
+plot_squared = plots_squared = function(gp, column_names = NULL, limit = NULL, verbose = FALSE){
   column_map <- gsub("~", "", as.character(gp$mapping))
   if(verbose) cat("Mapping:", paste(column_map, collapse = ", "), "\n")
   if(is.null(column_names)) column_names <- column_map[1:2]
@@ -666,6 +676,19 @@ plots_squared <- function(gp, column_names = NULL, limit = NULL, verbose = FALSE
     gp <- gp + xlim(c(-limit, limit)) + ylim(c(-limit, limit))
   }
   gp
+}
+
+plot_add_densities = function(object, group){
+  cowplot::plot_grid(
+    margin_density(data=object$data, x=names(object$data)[1], group=group) , NULL,
+    p, margin_density(data=object$data, x=names(object$data)[2], group=group) + coord_flip(),
+    rel_widths = c(.8, .2), rel_heights = c(.2, .8)
+  )
+}
+margin_density = function(data, x, group){
+  ggplot(data, aes_string(x, fill=group)) +
+    geom_density(alpha=.5) + theme_void() +
+    theme(legend.position = "none")
 }
 
 ### Utilities ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

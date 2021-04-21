@@ -91,16 +91,12 @@ stats_summary_table <- get_stat_report <- function(
 
   if(verbose) cat('Calculating groups stats\n') ######################################
   sum_stat <- data.frame(row.names = rnames, stringsAsFactors = FALSE, check.names = FALSE)
-  # res <- microbenchmark(
-  #     rowSums(mat > 0, na.rm = TRUE) / ncol(mat) * 100, # looks like this is faster
-  #     rowMeans(mat > 0, na.rm = TRUE) * 100
-  # )
 
   if('b' %in% moments && verbose) cat(' - Bases\n')
 
   if('md' %in% moments){
     if(verbose) cat(' - Median\n')
-    if('b' %in% moments) sum_stat[, paste0('Bmedian', datatype)] <- Biobase::rowMedians(mat, na.rm = TRUE)
+    if('b' %in% moments) sum_stat[, paste0('Bmedian', datatype)] <- Rfast::rowMedians(mat, na.rm = TRUE)
     medians <- apply(mat, 1, function(vec) tapply(vec, groups, median, na.rm = TRUE) )
     if(length(grps) != 1) medians <- t(medians)
     medians <- data.frame(medians, check.names = FALSE);
@@ -110,8 +106,8 @@ stats_summary_table <- get_stat_report <- function(
 
   if('mn' %in% moments){
     if(verbose) cat(' - Mean\n')
-    if('b' %in% moments) sum_stat[, paste0('Bmean', datatype)] <- Matrix::rowMeans(mat, na.rm = TRUE)
-    means <- apply(mat, 1, function(vec) tapply(vec, groups, Matrix::mean, na.rm = TRUE) )
+    if('b' %in% moments) sum_stat[, paste0('Bmean', datatype)] <- Rfast::rowmeans(mat, na.rm = TRUE)
+    means <- apply(mat, 1, function(vec) tapply(vec, groups, matrixStats::mean2, na.rm = TRUE) )
     if(length(grps) != 1) means <- t(means)
     means <- data.frame(means, check.names = FALSE); colnames(means) <- grps
     colnames(means) <- paste0(colnames(means), sep_str, 'mean', datatype)
@@ -121,7 +117,7 @@ stats_summary_table <- get_stat_report <- function(
   if('sd' %in% moments){
     if(verbose) cat(' - Standard deviation\n')
     if('b' %in% moments) sum_stat[, paste0('Bsd', datatype)] <- matrixStats::rowSds(mat, na.rm = TRUE)
-    means <- apply(mat, 1, function(vec) tapply(vec, groups, sd, na.rm = TRUE) )
+    means <- apply(mat, 1, function(vec) tapply(vec, groups, stats::sd, na.rm = TRUE) )
     if(length(grps) != 1) means <- t(means)
     means <- data.frame(means, check.names = FALSE); colnames(means) <- grps
     colnames(means) <- paste0(colnames(means), sep_str, 'sd', datatype)

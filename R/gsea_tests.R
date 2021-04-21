@@ -1,5 +1,6 @@
 #!/usr/bin/R
 
+# check http://yulab-smu.top/clusterProfiler-book/index.html
 libs <- c('liger', 'fgsea', 'parallel', 'graphics', 'ggplot2')
 libs <- sapply(libs, require, character.only = TRUE, quietly = TRUE)
 if(any(!libs)) warning('Missing libraries ', paste0(names(libs[!libs]), collapse = " "))

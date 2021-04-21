@@ -54,6 +54,7 @@ signature_scoring <- function(
   confounders = "RNA.*res",
   reductions = list(pca = c('PC_1', 'PC_2'), tsne = c('tSNE_1', 'tSNE_2'), umap = c('UMAP_1', 'UMAP_2')),
   couls = c("#fffffa", "#fffeee", "#ffe080", "#ffc100", "#ff0000", "#EE0000", "#a10000", "#670000"),
+  violins_color = "mean",
   verbose = FALSE
 ){
   str_safe_remove <- function(x, word = "random123") gsub("_{1,}", "_", gsub(word, "", x))
@@ -162,7 +163,10 @@ signature_scoring <- function(
     }
     for(confy in confounders){
       if(verbose) cat(" -", confy, "\n")
-      fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring$name)), "_violin_", confy, '.pdf')
+      fname <- paste0(
+        prefix, gsub("orig\\.", "", casefold(scoring$name)),
+        "_violin_", violins_color, "_", confy, '.pdf'
+      )
       if(is.file.finished(fname)) next
       tvar <- length(table(ddfplot[, confy]))
       ddfplot[, confy] <- factormix(ddfplot[, confy])
@@ -170,7 +174,7 @@ signature_scoring <- function(
         dat = ddfplot,
         xax = confy,
         yax = names(scoring[-1]),
-        colour_by = "mean"
+        colour_by = violins_color
       ) + RotatedAxis()
       pdf(fname, width = 12, height = 8);
       print(p)

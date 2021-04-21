@@ -237,7 +237,7 @@ volplot <- function(
   if(return_plot || interact) return(p) else{ cat("Plotting\n"); print(p)}
 }
 
-plots_clip_axes = function(df, type = 3){
+plot_clip_axes = function(df, type = 3){
   if(isTRUE(type)) type <- c(0.999, 0.999)
   type <- type[1:ncol(df)]; type[is.na(type)] <- max(c(type[!is.na(type)], 0.999))
   type <- setNames(type, names(df)[1:2])
