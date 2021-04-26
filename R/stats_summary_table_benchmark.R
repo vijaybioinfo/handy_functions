@@ -25,7 +25,7 @@ res <- microbenchmark(
 res <- microbenchmark(
   Biobase::rowMedians(mat, na.rm = TRUE),
   matrixStats::rowMedians(mat, na.rm = TRUE),
-  Rfast::rowMedians(mat, na.rm = TRUE) # undoublty faster
+  Rfast::rowMedians(mat, na.rm = TRUE) # undoublty faster; the two others are the same
 )
 res <- microbenchmark(
   Matrix::mean(c(mat), na.rm = TRUE),
