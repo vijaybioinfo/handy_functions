@@ -26,6 +26,7 @@
 #' @param scale_fun 'radius' or 'size', Default: 'radius'.
 #' @param features_position Argument in scale_y_discrete, Default: 'left'.
 #' @param values_trans Function to apply to the values in 'edata', Default: c.
+#' @param values_norm Function to apply to the means, Default: c.
 #' @param verbose Show progress, Default: FALSE.
 #' @return A patchwork object.
 #'
@@ -83,7 +84,8 @@ dot_plot = function(
   scale_fun = "radius", # 'radius' is used by Seurat::DotPlot
   features_position = "left",
   values_trans = c, # expm1
-  values_exprthr = 0, # expm1
+  values_exprthr = 0,
+  values_norm = c, # log2
   verbose = FALSE
 ){
   suppressPackageStartupMessages({
@@ -121,7 +123,7 @@ dot_plot = function(
   gene_cluster <- lapply(X = levels(x = efeatures$id), FUN = function(ident) {
     slice <- efeatures[efeatures$id == ident, -ncol(efeatures), drop = FALSE]
     as.data.frame(list(
-      count = apply(X = slice, MARGIN = 2, FUN = function(x) mean(x = values_trans(x)) ),
+      count = apply(X = slice, MARGIN = 2, FUN = function(x) values_norm(mean(x = values_trans(x))) ),
       pct = apply(X = slice, MARGIN = 2, FUN = function(x) mean(x = values_trans(x) > values_exprthr) ),
       Gene = colnames(slice), cluster = ident
     ))

@@ -504,7 +504,7 @@ bordering <- function(dtab, cnames = 1, n = 5, func = headtail){
   y[y %in% rownames(dtab)]
 }
 
-is.file.finished <- function(x, size = 3620) file.exists(x) && isTRUE(file.size(x) > size)
+is.file.finished <- function(x, size = 3620) file.exists(x) & file.size(x) > size
 
 # create factors with levels in alphanumeric order
 factormix <- function(x){

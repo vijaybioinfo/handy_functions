@@ -10,21 +10,50 @@
 source("/home/ciro/scripts/handy_functions/devel/file_reading.R") # readfile
 source("/home/ciro/scripts/handy_functions/devel/overlap.R") # overlap_list
 source("/home/ciro/scripts/handy_functions/devel/plots.R") # make_title
+source("/home/ciro/scripts/handy_functions/devel/filters.R") # getDEGenes
+source("/home/ciro/scripts/handy_functions/devel/utilities.R") # vlist2df
 
 ### Initial signatures ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 fnames = c(
   "/home/ciro/simon/info/gsea_lists_extended.csv",
-  "~/asthma_pjs/info/trm_suptab2Lung_clarke.csv",
   "/home/ciro/vdv/vfajardo/general_data/cell_type_classification/module_definition/module_signatures/activation/activation_2020-02-24_NoFiltering/ModuleACTIVATIONFeaturesSignatureWithLFCTholds1.txt",
   "/home/ciro/large/covid19/results/dgea/CD8T24_R1n2N_sng_15p/comprs/activation/NCVvsCV/signature_genes/selected_genes.csv",
   "/home/ciro/covid19/info/signatures_hdm.csv"
 )
+# "~/asthma_pjs/info/trm_suptab2Lung_clarke.csv", # all genes taken; /home/ciro/asthma_airways/scripts/trm_madness.R
 signatures_vijaylab <- lapply(fnames, readfile, stringsAsFactors = FALSE)
-colnames(signatures_vijaylab[[2]]) = c("nontrm_signature_clarke", "trm_signature_clarke")
-colnames(signatures_vijaylab[[3]]) = "tcell_activation_flu"
+colnames(signatures_vijaylab[[2]]) = "tcell_activation_flu"
 signatures_vijaylab <- unlist(signatures_vijaylab, recursive = FALSE)
 signatures_vijaylab <- lapply(signatures_vijaylab, function(x){ y <- x[x != ""]; y[!is.na(y)] })
 str(signatures_vijaylab)
+
+# Adding James signatures
+# cp ~/Documents/liai/cancer/amica/james_trm_table4.cs /Volumes/ciro/amica/info
+fnames = c(
+  lung = "/home/ciro/asthma_pjs/info/deprecated/james_trm_table2.csv",
+  tumor = "/home/ciro/amica/info/james_trm_table4.csv"
+)
+res_list <- lapply(fnames, readfile, stringsAsFactors = FALSE, row.names = 1)
+str(res_list)
+colnames(res_list[[1]])[1] <- "log2FoldChange"
+colnames(res_list[[2]])[c(1,3)] <- c("log2FoldChange", "padj")
+range(abs(res_list[[1]]$log2FoldChange))
+range(abs(res_list[[2]]$log2FoldChange))
+degs_list0 <- lapply(
+  X = res_list,
+  FUN = function(x){
+    list(
+      trm = getDEGenes(x, pv = 0.05, fc = 1, upreg = TRUE, v = TRUE),
+      nontrm = getDEGenes(x, pv = 0.05, fc = 1, upreg = FALSE, v = TRUE)
+    )
+})
+cat("All genes:", sum(sapply(degs_list0[[1]], length)) == nrow(res_list[[1]]), "\n")
+cat("All genes:", sum(sapply(degs_list0[[2]], length)) == nrow(res_list[[2]]), "\n")
+str(degs_list0)
+degs_list <- unlist(degs_list0, recursive = FALSE)
+names(degs_list) <- gsub("(.*)\\.(.*)", "\\2_\\1_clarke", names(degs_list))
+str(degs_list)
+signatures_vijaylab = c(signatures_vijaylab, degs_list)
 
 ### COVID-19 CD8 paper ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 signaturesl <- read.csv("/home/ciro/covid19/info/tcell_cd8story_signatures.csv", stringsAsFactor = FALSE)
@@ -51,26 +80,26 @@ signatures_tem <- unlist(signatures_tem, recursive = FALSE)
 names(signatures_tem) <- mynames
 str(signatures_tem)
 
-### From the internet ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# extra_signatures = sigPathway::importGeneSets(fileNames = "GMT, GMX, GRP, and XML")
-# https://cran.r-project.org/web/packages/msigdbr/vignettes/msigdbr-intro.html
-urls = "http://www.gsea-msigdb.org/gsea/msigdb/download_geneset.jsp?geneSetName=KRAS.600.LUNG.BREAST_UP.V1_UP&fileType=gmx"
-msigdbr::msigdbr_species()
-h_gene_sets = msigdbr::msigdbr(species = "Homo sapiens")
-h_gene_sets
-selected_set = grep(pattern = "LUNG_UP", h_gene_sets[['gs_name']], ignore.case = TRUE)
-selected_set = h_gene_sets[['gs_name']] %in% "KRAS.LUNG_UP.V1_UP"
-table(h_gene_sets[['gs_name']][selected_set])
-extra_signatures = make_list(data.frame(h_gene_sets[selected_set, ]), "gs_name", "gene_symbol")
+# ### From the internet ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# # extra_signatures = sigPathway::importGeneSets(fileNames = "GMT, GMX, GRP, and XML")
+# # https://cran.r-project.org/web/packages/msigdbr/vignettes/msigdbr-intro.html
+# urls = "http://www.gsea-msigdb.org/gsea/msigdb/download_geneset.jsp?geneSetName=KRAS.600.LUNG.BREAST_UP.V1_UP&fileType=gmx"
+# msigdbr::msigdbr_species()
+# h_gene_sets = msigdbr::msigdbr(species = "Homo sapiens")
+# h_gene_sets
+# selected_set = grep(pattern = "LUNG_UP", h_gene_sets[['gs_name']], ignore.case = TRUE)
+# selected_set = h_gene_sets[['gs_name']] %in% "KRAS.LUNG_UP.V1_UP"
+# table(h_gene_sets[['gs_name']][selected_set])
+# extra_signatures = make_list(data.frame(h_gene_sets[selected_set, ]), "gs_name", "gene_symbol")
 
-### check with previous object ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-signatures_vijaylab0 = readfile("/home/ciro/scripts/handy_functions/data/signatures_vijaylab.rdata")
-signatures_cd8covid0 = readfile("/home/ciro/scripts/handy_functions/data/signatures_cd8covid.rdata")
-signatures_tem0 = readfile("/home/ciro/scripts/handy_functions/data/signatures_tem.rdata")
-names(signatures_vijaylab0)[!names(signatures_vijaylab0) %in% names(signatures_vijaylab)]
-names(signatures_cd8covid0)[!names(signatures_cd8covid0) %in% names(signatures_cd8covid)]
-names(signatures_tem0)[!names(signatures_tem0) %in% names(signatures_tem)]
-# all cool!
+# ### check with previous object ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# signatures_vijaylab0 = readfile("/home/ciro/scripts/handy_functions/data/signatures_vijaylab.rdata")
+# signatures_cd8covid0 = readfile("/home/ciro/scripts/handy_functions/data/signatures_cd8covid.rdata")
+# signatures_tem0 = readfile("/home/ciro/scripts/handy_functions/data/signatures_tem.rdata")
+# names(signatures_vijaylab0)[!names(signatures_vijaylab0) %in% names(signatures_vijaylab)]
+# names(signatures_cd8covid0)[!names(signatures_cd8covid0) %in% names(signatures_cd8covid)]
+# names(signatures_tem0)[!names(signatures_tem0) %in% names(signatures_tem)]
+# # all cool!
 
 ### Merging ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 signatures_vijay_db = c(signatures_vijaylab, signatures_cd8covid, signatures_tem)
@@ -89,6 +118,7 @@ compare_lists(
 allin = which(signatures_vijay_db_ov == 1, arr.ind = TRUE); allin # one :o
 signatures_vijay_db_ov[allin[, 1], allin[, 2], drop = FALSE]
 str(signatures_vijay_db[unlist(dimnames(signatures_vijay_db_ov[allin[, 1], allin[, 2], drop = FALSE]))])
+
 ddf <- vlist2df(signatures_vijay_db); ddf[is.na(ddf)] <- ""; ddf = rbind(ddf[100000, ], ddf)
 str(ddf)
 # https://software.broadinstitute.org/cancer/software/gsea/wiki/index.php/Data_formats#GMX:_Gene_MatriX_file_format_.28.2A.gmx.29

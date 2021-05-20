@@ -103,7 +103,7 @@ stats_summary_table <- get_stat_report <- function(
 
   if('md' %in% moments){
     if(verbose) cat(' - Median\n')
-    if('b' %in% moments) sum_stat[, paste0('Bmedian', datatype)] <- medians_fun(mat, na.rm = TRUE)
+    if('b' %in% moments) sum_stat[, paste0('Bmedian', datatype)] <- medians_fun(mat)
     medians <- apply(mat, 1, function(vec) tapply(vec, groups, median, na.rm = TRUE) )
     if(length(grps) != 1) medians <- t(medians)
     medians <- data.frame(medians, check.names = FALSE);
@@ -113,7 +113,7 @@ stats_summary_table <- get_stat_report <- function(
 
   if('mn' %in% moments){
     if(verbose) cat(' - Mean\n')
-    if('b' %in% moments) sum_stat[, paste0('Bmean', datatype)] <- means_fun(mat, na.rm = TRUE)
+    if('b' %in% moments) sum_stat[, paste0('Bmean', datatype)] <- means_fun(mat)
     means <- apply(mat, 1, function(vec) tapply(vec, groups, matrixStats::mean2, na.rm = TRUE) )
     if(length(grps) != 1) means <- t(means)
     means <- data.frame(means, check.names = FALSE); colnames(means) <- grps

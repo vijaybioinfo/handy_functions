@@ -6,6 +6,19 @@ suppressPackageStartupMessages({
 })
 theme_set(theme_cowplot())
 
+# Colour brewer: colorbrewer2.org
+# Colour brewer expanded: https://bl.ocks.org/emeeks/8cdec64ed6daf955830fa723252a4ab3
+# Compare range between two colours: https://learnui.design/tools/data-color-picker.html
+# Viz your custom palettes: https://projects.susielu.com/viz-palette
+
+couls_opt = list(
+  red_gradient = list(
+    c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','#EE0000','#b30000', '#670000'), # strong
+    c('#fffffa', '#fff7cf', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'), # white
+    c('#fff7cf', '#fcf193', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'), # divisive?
+    c("#ffffcc","#ffeda0","#fed976","#feb24c","#fd8d3c","#fc4e2a","#e31a1c","#bd0026","#800026")) # brewer
+)
+
 # Packages: ggplot2, cowplot
 
 #' Violin Plot
@@ -76,17 +89,14 @@ violin <- function(
     }
   }; filname <- colour_by
   pct <- tapply(dat[, yax], dat[, xax], function(pop) round(sum(pop > 0, rm.na = TRUE) / length(pop) * 100, digits = 2) )
-  print(pct); pct[pct>100] <- 100
+  pct[pct>100] <- 100
   dat$pct <- dat$pct50 <- sapply(as.character(dat[, xax]), function(X) return(pct[X]) )
   dat$pct50[dat$pct50>50] <- 50
   means <- tapply(dat[, yax], dat[, xax], mean, na.rm = TRUE)
   dat$means <- dat$mean <- sapply(as.character(dat[, xax]), function(X) return(means[X]) )
 
   if(is.null(couls)) couls = 1
-  couls_opt = list(
-    c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','#EE0000','#b30000', '#670000'),
-    c('#fffffa', '#fff7cf', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'))
-  if(is.numeric(couls)) couls = couls_opt[[couls]]
+  if(is.numeric(couls)) couls = couls_opt$red_gradient[[couls]]
   brks <- NULL
   master_brks = list( # create a master for breaks in mean and percentage
     pct = list(filname = '%+', brks = c(0, 10, 20, 40, 60, 80, 100)),
@@ -599,9 +609,9 @@ quadrant_loc = function(qcut, center = FALSE) {
     for(j in 1:nrow(qcut)){
       y <- sapply(X = unlist(dimnames(qcut[j, i, drop = FALSE])),
         FUN = function(s){
-          patty_i <- if(center) "\\[|\\]|\\(|\\)" else if(grepl("\\)", s)) ",.*|\\[" else ".*,|\\]"
+          patty_i <- if(isTRUE(center)) "\\[|\\]|\\(|\\)" else if(grepl("\\)", s)) ",.*|\\[" else ".*,|\\]"
           z <- gsub(pattern = patty_i, replacement = "", x = s)
-          if(center) sapply(strsplit(z, ","), function(w) mean(as.numeric(w)) ) else as.numeric(z)
+          if(isTRUE(center)) sapply(strsplit(z, ","), function(w) mean(as.numeric(w)) ) else as.numeric(z)
       })
       qposition[[paste0(j,i)]] <- y
     }
@@ -618,11 +628,16 @@ quadrant_fun = function(
   xintercept = 0, yintercept = 0, type = "count", center = FALSE
 ) {
   qlimits = list(x = xintercept, y = yintercept)
-  names(qlimits) <- c("x", "y")
   qcounts <- table(lapply(
     X = setNames(names(qlimits), names(qlimits)),
-    FUN = function(x) Hmisc::cut2(x = data[, x], cuts = qlimits[[x]])
-  ))
+    FUN = function(x){
+      y <- data[, x]
+      if(min(y, na.rm = TRUE) == qlimits[[x]]){
+        lo_i = paste0("[", min(y, na.rm = TRUE) + .001, ",", qlimits[[x]] + .002, ")")
+        hi_i = paste0("[", qlimits[[x]] + .003, ",", round(max(y, na.rm = TRUE), 3), "]")
+        ifelse(y > qlimits[[x]], hi_i, lo_i)
+      }else{ Hmisc::cut2(x = y, cuts = qlimits[[x]]) }
+  }))
   qposition <- quadrant_loc(qcut = qcounts, center = center)
   qposition$count <- if(type == "percent"){
     scales::percent(c(qcounts / sum(qcounts)))
@@ -661,7 +676,7 @@ plot_add_quadrants = plots_add_quadrants = function(
   plot +
     geom_vline(xintercept = limits[[1]], linetype = "dashed", color = "gray50") +
     geom_hline(yintercept = limits[[2]], linetype = "dashed", color = "gray50") +
-    stat_quadrant(xintercept = limits[[1]], ,yintercept = limits[[2]], ...)
+    stat_quadrant(xintercept = limits[[1]], yintercept = limits[[2]], ...)
 }
 
 plot_squared = plots_squared = function(gp, column_names = NULL, limit = NULL, verbose = FALSE){

@@ -171,7 +171,7 @@ gsea_tests <- function(
         try(gsea_plotEnrichment(
           pathway = gs,
           stats = vals,
-          gsea.metric = metric_names[metric],
+          gsea.metric = .metric_names[metric],
           gsea.enrichment.score = round(unlist(fgseaRes[pathway == indx, "ES"]), 2),
           gsea.normalized.enrichment.score = round(unlist(fgseaRes[pathway == indx, "NES"]), 2),
           padj = signif(unlist(fgseaRes[pathway == indx, "padj"]), 2),
@@ -186,8 +186,8 @@ gsea_tests <- function(
   return(fgseaRes)
 }
 
-metric_names = c('Signal-to-Noise ratio', 'T-Test', 'Ratio of Classes', 'Difference of Classes', 'log2 Ratio of Classes')
-names(metric_names) = c('Signal2Noise', 'tTest', 'Ratio_of_Classes', 'Diff_of_Classes', 'log2_Ratio_of_Classes')
+.metric_names = c('Signal-to-Noise ratio', 'T-Test', 'Ratio of Classes', 'Difference of Classes', 'log2 Ratio of Classes')
+names(.metric_names) = c('Signal2Noise', 'tTest', 'Ratio_of_Classes', 'Diff_of_Classes', 'log2_Ratio_of_Classes')
 
 #' Metrics for Ranking Genes
 #'
@@ -243,15 +243,6 @@ gsea_metric <- function(
       mean_adj = ifelse(mean_adj == 0, 1, mean_adj)
       matrixStats::rowMaxs( as.matrix(data.frame(minsd = .2 * mean_adj, sd = y)) )
     }
-    # y <- stattab[, x]
-    # if(grepl("_sd", x)){ # check these lines... might explain the spikes when no filter is applied
-    #   ttab <- as.matrix(data.frame(minsd = .2 * abs(stattab[, sub("_sd", "_mean", x)]), sd = y))
-    #   y <- matrixStats::rowMaxs( ttab )
-    # }
-    # if(grepl("_mean", x)) y <- ifelse(y == 0, 1, y) # understimating differences... or even switching!
-    # Observations are perserved!!!!
-    # /home/ciro/large/covid19/results/a1_final_figures_cd8/Figure_4/fgsea_new/a1_gsea_summary_37sets_2020-10-13_NES.pdf
-    # /home/ciro/large/covid19/results/a1_final_figures_cd8/Figure_4/fgsea_update_2021-03-18/summary_NES0_padj0.05_heatmap.pdf
     return(y)
   }), row.names = rownames(stattab)); stattab <- stattab2; rm(stattab2)
   means <- rev(grep("_mean", colnames(stattab)))

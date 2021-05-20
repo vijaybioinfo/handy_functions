@@ -11,6 +11,7 @@ filters_complex <- meta_filtering <- function(
   cts = NULL,
   verbose = FALSE
 ) {
+  if(length(filters) == 0) filters <- "none"
   if(is.null(filters[[1]][1])) filters <- "none"
   if(is.null(cname)) cname <- "none"
   if(filters[[1]][1] == "none" && cname[1] == "none") return(list(annotation = mdata))
@@ -278,11 +279,11 @@ filters_columns <- function(
   onames <- onames[nnames[onames] <= maxn] # N <= 27 because ggpairs doesn't allow more than this
   onames <- onames[!is.na(onames)]
   if(length(onames) == 1) return(onames)
-  if(duplicate_rm){
+  if(duplicate_rm & length(dnames) > 2){
     if(verbose) cat("Columns wiht same N:", length(dnames), "\n")
     if(verbose) cat("Checking if groups in columns are the same\n")
     if(verbose > 1) print(reshape2::melt(sort(nnames[unname(dnames)])))
-    pairs <- try(gtools::combinations(n = length(dnames), r = 2, v = dnames))
+    pairs <- try(gtools::combinations(n = length(dnames), r = 2, v = dnames), silent = TRUE)
     if(class(pairs) != 'try-error'){
       kha <- apply(pairs, 1, function(x){
         y <- table(mdata[, c(x)])
