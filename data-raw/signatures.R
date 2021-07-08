@@ -28,19 +28,22 @@ signatures_vijaylab <- lapply(signatures_vijaylab, function(x){ y <- x[x != ""];
 str(signatures_vijaylab)
 
 # Adding James signatures
-# cp ~/Documents/liai/cancer/amica/james_trm_table4.cs /Volumes/ciro/amica/info
+# cp ~/Documents/liai/cancer/amica/james_trm_table4.csv /Volumes/ciro/amica/info/
+# # unique genes in TRM clusters. 2 is purple cluster and hast ITGAE
+# cp ~/Documents/liai/cancer/amica/james_trm_table7.csv /Volumes/ciro/amica/info/
 fnames = c(
   lung = "/home/ciro/asthma_pjs/info/deprecated/james_trm_table2.csv",
-  tumor = "/home/ciro/amica/info/james_trm_table4.csv"
+  tumor = "/home/ciro/amica/info/james_trm_table4.csv",
+  sctrm = "/home/ciro/amica/info/james_trm_table7.csv"
 )
 res_list <- lapply(fnames, readfile, stringsAsFactors = FALSE, row.names = 1)
-str(res_list)
+str(res_list, list.len = 10)
 colnames(res_list[[1]])[1] <- "log2FoldChange"
 colnames(res_list[[2]])[c(1,3)] <- c("log2FoldChange", "padj")
 range(abs(res_list[[1]]$log2FoldChange))
 range(abs(res_list[[2]]$log2FoldChange))
 degs_list0 <- lapply(
-  X = res_list,
+  X = res_list[1:2],
   FUN = function(x){
     list(
       trm = getDEGenes(x, pv = 0.05, fc = 1, upreg = TRUE, v = TRUE),
@@ -50,7 +53,11 @@ degs_list0 <- lapply(
 cat("All genes:", sum(sapply(degs_list0[[1]], length)) == nrow(res_list[[1]]), "\n")
 cat("All genes:", sum(sapply(degs_list0[[2]], length)) == nrow(res_list[[2]]), "\n")
 str(degs_list0)
-degs_list <- unlist(degs_list0, recursive = FALSE)
+degs_list1 = lapply(res_list[3], make_list, "Cluster.where.gene.is.enriched")
+names(degs_list1[[1]]) <- paste0("cluster", names(degs_list1[[1]]))
+str(degs_list1)
+degs_list <- c(degs_list0, degs_list1)
+degs_list <- unlist(degs_list, recursive = FALSE)
 names(degs_list) <- gsub("(.*)\\.(.*)", "\\2_\\1_clarke", names(degs_list))
 str(degs_list)
 signatures_vijaylab = c(signatures_vijaylab, degs_list)

@@ -15,15 +15,14 @@ filters_complex <- meta_filtering <- function(
   if(is.null(filters[[1]][1])) filters <- "none"
   if(is.null(cname)) cname <- "none"
   if(filters[[1]][1] == "none" && cname[1] == "none") return(list(annotation = mdata))
-  if(is.vector(mdata)) mdata <- data.frame(feature = mdata, row.names = mdata, stringsAsFactors = FALSE)
-  if(is.matrix(mdata)) mdata <- data.frame(feature = rownames(mdata), row.names = rownames(mdata), stringsAsFactors = FALSE)
+  if(is.vector(mdata))
+    mdata <- data.frame(feature = mdata, row.names = mdata, stringsAsFactors = FALSE)
+  if(is.matrix(mdata))
+    mdata <- data.frame(mdata, row.names = rownames(mdata), stringsAsFactors = FALSE)
   if(any(filters %in% rownames(mdata))){
     filters <- show_found(x = filters, y = rownames(mdata), verbose = verbose)
     return(list(annotation = mdata[filters, ]))
   }
-  tvar <- cname %in% colnames(mdata);
-  if(sum(!tvar) > 0 && cname[1] != "none") warning("Column name(s) not found: ", show_commas(cname[!tvar]))
-  cname <- cname[tvar]
   if(verbose) cat("Watch-out columns:", show_commas(cname), "\n")
   if(verbose){ cat('Using filter:\n'); str(filters) }
   if(sum(grepl(sepchar, filters)) || length(filters) > 1 || is.list(filters)){
@@ -35,9 +34,11 @@ filters_complex <- meta_filtering <- function(
     if(verbose) cat("Filters from file", filters[[1]][1], "\n")
     filters <- c(filters, filters[[1]][1]) # separating the file from the rest of the filters
     filters[[1]] <- filters[[1]][-1]; filters <- rev(filters)
-    filecon <- readfile(filters[[1]][1], stringsAsFactors = FALSE, verbose = verbose); if(verbose) str(filecon)
+    filecon <- readfile(filters[[1]][1], stringsAsFactors = FALSE, verbose = verbose)
+    if(verbose) str(filecon)
     tvar <- head(which(sapply(filecon, function(x) any(x %in% rownames(mdata)) )), 1)
-    if(length(tvar) == 0) warning("No column in ", basename(filters[[1]][1]), " was compatible with 'mdata'")
+    if(length(tvar) == 0)
+      warning("No column in ", basename(filters[[1]][1]), " was compatible with 'mdata'")
     rownames(filecon) <- filecon[, tvar]
     tvar <- intersect(x = rownames(filecon), y = rownames(mdata))
     if(verbose) cat(length(tvar), "intersecting\n")
@@ -71,10 +72,11 @@ filters_complex <- meta_filtering <- function(
   allcnames <- unique(c(cname, sapply(filters, head, 1)))
   allcnames <- allcnames[grepl(sepchar, allcnames)]
   allcnames <- allcnames[!allcnames %in% colnames(mdata)]
+  if(verbose) cat("Combining columns\n")
   if(length(allcnames) > 0){
     for(cname_i in allcnames){
       addeds <- unlist(strsplit(cname_i, sepchar))
-      if(verbose) cat("Combining columns:", addeds, sep = "\n")
+      if(verbose) cat(" -", addeds, "\n")
       mdata$combn <- apply(mdata[, addeds, drop = FALSE], 1, paste, collapse = "_")
       colnames(mdata) <- sub("^combn$", cname_i, colnames(mdata))
     }
@@ -125,6 +127,8 @@ filters_complex <- meta_filtering <- function(
       mdata <- mdata[cellsf, ]
     }
   }
+  tvar <- cname %in% colnames(mdata);
+  if(sum(!tvar) > 0) cat("Column name(s) not found: ", show_commas(cname[!tvar]))
   if(did_filter == nrow(mdata) && verbose) cat("- no filter applied\n")
   return(list(annotation = mdata, filter = filters))
 }
@@ -139,9 +143,8 @@ filters_pattern <- translist <- function(pat){
   }
   if(sum(grepl("^list", pat))) pat <- eval(expr = parse(text = pat))
   if(!is.list(pat)) pat <- list(pat)
-  # tvar <- any(sapply(pat, function(x) any(grepl('~', x)) && length(x) > 1 ))
-  # if(tvar) return(pat) # if it has the separator and is a vector > 1, return it
   pat <- lapply(pat, function(x){
+    if(any(grepl('~', x)) && length(x) > 1) return(x)
     if(grepl('c\\(.*)', x[1])){
       eval(expr = parse(text = x))
     }else if(grepl('~', x[1])){
@@ -268,18 +271,15 @@ filters_columns <- function(
   nnames <- sapply(setNames(onames, unname(onames)), function(x){
     if(is.numeric(mdata[, x])) -1 else length(unique(mdata[, x]))
   })
-  if(duplicate_rm){
-    tvar <- is.finite(nnames) & nnames > 1; dnames <- onames[tvar][duplicated(nnames[tvar])]
-    # n_freq = table(nnames[tvar]) > 1
-    # dnames <- onames[onames %in% names(nnames[nnames %in% as.numeric(names(n_freq[n_freq]))])]
-  }
   onames <- onames[order(nnames)]
   onames <- onames[nnames[onames] != nrow(mdata)] # excluding  N = total rows
   onames <- onames[nnames[onames] > 1] # excluding N = 1
   onames <- onames[nnames[onames] <= maxn] # N <= 27 because ggpairs doesn't allow more than this
   onames <- onames[!is.na(onames)]
   if(length(onames) == 1) return(onames)
-  if(duplicate_rm & length(dnames) > 2){
+  if(duplicate_rm & length(onames) > 2){
+    tvar <- is.finite(nnames) & nnames > 1;
+    dnames <- onames[tvar]
     if(verbose) cat("Columns wiht same N:", length(dnames), "\n")
     if(verbose) cat("Checking if groups in columns are the same\n")
     if(verbose > 1) print(reshape2::melt(sort(nnames[unname(dnames)])))
@@ -349,6 +349,38 @@ features_add_tag <- add_gene_tag <- function(
     return(annot[, tags[1], drop = FALSE])
   })
   as.data.frame(newcolms)
+}
+
+features_find = function(
+  features,
+  universe,
+  verbose = FALSE
+) {
+  features_f <- features[file.exists(features)]
+  features_df = if(length(features_f)){
+    if(verbose) cat("From file(s):", features_f, sep = "\n")
+    tmp = lapply(X = features_f, FUN = read.csv, stringsAsFactors = FALSE)
+    if(length(features) > 1){
+      y <- features[!features %in% features_f]
+      if(verbose) cat("Extra", length(y), "features\n")
+      tmp <- c(tmp, data.frame(gene_name = y, stringsAsFactors = FALSE))
+    }; data.table::rbindlist(tmp, fill = TRUE)
+  }else{
+    data.frame(gene_name = features, stringsAsFactors = FALSE)
+  }
+  features_df$found <- apply(X = features_df, MARGIN = 1, FUN = function(x){
+    y <- unlist(strsplit(x, "~")) # if() y <- casefold(y, upper = TRUE)
+    z <- y[y %in% universe]
+    if(length(z) == 0){
+      z <- unique(c(y, unlist(Seurat::GeneSymbolThesarus(
+        symbols = y, timeout = 15, several.ok = TRUE))))
+      z <- y[y %in% universe]
+    }; ifelse(length(z) == 0, "", z)
+  })
+  if(any(features_df$found == "") && verbose){
+    cat("Not found\n"); str(features_df[features_df$found == "", ])
+  }
+  return(features_df)
 }
 
 # when you have a vector of filters you want to place separated by
@@ -441,10 +473,10 @@ sample_even <- sample_grp <- function(
   annot,
   cname = 1,
   maxln = NULL, # if negative, returns that number per group
-  v = FALSE
+  verbose = FALSE
 ){
-  annot <- remove.factors(annot)
-  grsize <- table(annot[, cname])
+  annot$tmp123 = make.names(as.character(annot[, cname]))
+  grsize <- table(annot$tmp123[!is.na(annot[, cname])])
   factored <- rep(min(grsize), length(grsize)) # take the smallest group size
   if(!is.null(maxln)){
     if(is.character(maxln)){ # sample to a total of cells
@@ -462,12 +494,13 @@ sample_even <- sample_grp <- function(
     factored <- ifelse(factored > grsize, grsize, factored)
   }
   names(factored) <- names(grsize); set.seed(27)
+  if(verbose){ cat("Factors:"); str(factored)}
   scells <- lapply(names(grsize), function(x){
-    sample(rownames(annot[annot[, cname] == x, ]), factored[x])
+    sample(rownames(annot[which(annot$tmp123 == x), ]), factored[x])
   }); names(scells) <- names(grsize)
   finalgrsize <- sapply(scells, length)
   scells <- unlist(scells)
-  if(v){
+  if(verbose){
     cat("Given group:", show_commas(names(grsize)), "\n")
     cat("Init. sizes:", show_commas(grsize), "\n")
     cat("Final sizes:", show_commas(finalgrsize), "\n")
@@ -634,8 +667,14 @@ fig_set_data <- function(
 #     order = "factor order"
 #   )
 # )
-fig_set_identities <- function(mdata, idents = NULL, verbose = FALSE){
-  if(is.null(idents)) return(mdata)
+fig_set_identities <- function(
+  mdata,
+  idents = NULL,
+  verbose = FALSE
+){
+  if(is.null(idents)){
+    mdata$Identity = factor(rep("Data", nrow(mdata))); return(mdata)
+  }
   idents <- if(is.null(idents$name)) idents else list(idents)
   if(is.null(names(idents))){
     new_cnames <- paste0("Identity", c("", 1:20));
@@ -651,17 +690,19 @@ fig_set_identities <- function(mdata, idents = NULL, verbose = FALSE){
       warning("Column(s) not found: ", show_commas(idents[[i]]$name[!tvar]))
       warning("Possible values: ", show_commas(colnames(mdata), Inf))
     }
-    mdata$tmp <- do.call(paste, c(remove.factors(mdata[, idents[[i]]$name, drop = FALSE]), sep = "_"))
+    mdata$tmp <- ident_combine(mdata, idents[[i]]$name, "_")
+    # mdata$tmp <- do.call(paste, c(remove.factors(mdata[, idents[[i]]$name, drop = FALSE]), sep = "_"))
     mdata$tmp <- if(!is.null(idents[[i]]$identnames)){
       if(verbose) cat("Replacing identities\n")
-      factor(idents[[i]]$identnames[as.character(mdata$tmp)], levels = unique(unname(idents[[i]]$identnames)))
+      factor(idents[[i]]$identnames[as.character(mdata$tmp)],
+        levels = unique(unname(idents[[i]]$identnames)))
     }else{ mdata$tmp }
     mdata$tmp <- if("REST" %in% idents[[i]]$order){
       tvar <- as.character(mdata$tmp)
       ifelse(!tvar %in% idents[[i]]$order, "REST", tvar)
     }else{ mdata$tmp }
-    tvar <- !is.null(idents[[i]]$order) && any(as.character(mdata$tmp) %in% idents[[i]]$order)
-    mdata$tmp <- if(tvar){
+    tvar <- any(as.character(mdata$tmp) %in% idents[[i]]$order)
+    mdata$tmp <- if(tvar && !is.null(idents[[i]]$order)){
       if(verbose) cat("Ordering identities\n")
       factor(mdata$tmp, idents[[i]]$order)
     }else{ factormix(mdata$tmp) }

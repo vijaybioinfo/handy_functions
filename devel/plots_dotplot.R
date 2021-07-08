@@ -78,7 +78,7 @@ dot_plot = function(
   annotate_colours = NULL,
   annotate_legend = TRUE,
   dot_legend = TRUE, # dotplot legend
-  cols_limits = c(-2, 2),
+  cols_limits = NULL, #c(-2, 2)
   size_limits = 10,
   size_scale = 6,
   scale_fun = "radius", # 'radius' is used by Seurat::DotPlot
@@ -118,7 +118,9 @@ dot_plot = function(
   mdata$Identity = if(length(columns) > 1){
     do.call(paste, c(mdata[, columns, drop = FALSE], sep = "-"))
   }else{ mdata[, columns] }
-  efeatures = data.frame(t(as.matrix(edata[features, rownames(mdata)])), id = mdata$Identity)
+  efeatures = data.frame(
+    t(as.matrix(edata[features, rownames(mdata)])), id = mdata$Identity,
+    check.names = FALSE)
   # Calculating the summary statistics
   gene_cluster <- lapply(X = levels(x = efeatures$id), FUN = function(ident) {
     slice <- efeatures[efeatures$id == ident, -ncol(efeatures), drop = FALSE]
@@ -151,9 +153,9 @@ dot_plot = function(
     ggplot(aes(x = cluster, y = Gene, color = count, size = pct)) +
     geom_point() + cowplot::theme_cowplot() +
     theme(
-      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-      axis.text.y = element_text(size = 13, face = "bold.italic"),
-      axis.ticks = element_blank(), axis.line  = element_blank()
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.text.y = element_text(size = 13, face = "bold.italic")#,
+      # axis.ticks = element_blank(), axis.line  = element_blank()
     ) +
     scale_color_gradientn(colours = cols, limits = cols_limits, oob = scales::squish) +
     scale_fun(range = c(0, size_scale), limits = size_limits) +

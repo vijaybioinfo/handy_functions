@@ -13,10 +13,10 @@ theme_set(theme_cowplot())
 
 couls_opt = list(
   red_gradient = list(
-    c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','#EE0000','#b30000', '#670000'), # strong
-    c('#fffffa', '#fff7cf', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'), # white
-    c('#fff7cf', '#fcf193', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'), # divisive?
-    c("#ffffcc","#ffeda0","#fed976","#feb24c","#fd8d3c","#fc4e2a","#e31a1c","#bd0026","#800026")) # brewer
+    strong = c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','#EE0000','#b30000', '#670000'),
+    white = c('#fffffa', '#fff7cf', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'), # white
+    divisive = c('#fff7cf', '#fcf193', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'),
+    brewer = c("#ffffcc","#ffeda0","#fed976","#feb24c","#fd8d3c","#fc4e2a","#e31a1c","#bd0026","#800026"))
 )
 
 # Packages: ggplot2, cowplot
@@ -93,15 +93,17 @@ violin <- function(
   dat$pct <- dat$pct50 <- sapply(as.character(dat[, xax]), function(X) return(pct[X]) )
   dat$pct50[dat$pct50>50] <- 50
   means <- tapply(dat[, yax], dat[, xax], mean, na.rm = TRUE)
-  dat$means <- dat$mean <- sapply(as.character(dat[, xax]), function(X) return(means[X]) )
+  dat$mean <- sapply(as.character(dat[, xax]), function(X) return(means[X]) )
+  dat$mean_full <- dat$mean_12 <- dat$mean
 
   if(is.null(couls)) couls = 1
   if(is.numeric(couls)) couls = couls_opt$red_gradient[[couls]]
   brks <- NULL
   master_brks = list( # create a master for breaks in mean and percentage
     pct = list(filname = '%+', brks = c(0, 10, 20, 40, 60, 80, 100)),
-    mean = list(filname = 'Mean', make_breaks(dat[, yax])),
-    means = list(filname = 'Mean', brks = c(0, 2, 4, 6, 8, 10, 12)),
+    mean = list(filname = 'Mean', make_breaks(dat$means)),
+    mean_full = list(filname = 'Mean', make_breaks(dat[, yax])),
+    mean_12 = list(filname = 'Mean', brks = c(0, 2, 4, 6, 8, 10, 12)),
     pct50 = list(filname = '%+cells', brks = c(0, 5, 10, 20, 30, 40, 50))
   ) # substitute the master with the given breaks
   if(is.list(colour_by)){
@@ -335,6 +337,13 @@ custom_heatmap <- function(
       list(...)[[which(names(list(...)) %in% row_params)]],
       check.names = FALSE, stringsAsFactors = FALSE
     ); str(tvar)
+    # tmp <- colnames(tvar[, !sapply(tvar, is.numeric), drop = FALSE])
+    # for(i in tmp){ # Factor levels on variable X do not match with annotation_colors
+    #   anncolist[[i]] <- v2cols(
+    #     select = unique(c(tvar[, i], anncolist[[i]])), sour = couls, v = verbose
+    #   )
+    # }
+    if(!any(rownames(tvar) %in% rnames)) stop("row annotation needs row names!")
     anncolist <- c(anncolist,
       lapply(tvar[, !sapply(tvar, is.numeric), drop = FALSE], function(x){
         v2cols(select = x, sour = couls, v = verbose)
@@ -388,7 +397,7 @@ custom_heatmap <- function(
     feature_order
   }else{ rnames }
   feature_order <- if(as.character(feature_order[1]) == "hclust"){
-    if(verbose) cat("Ordering based on hierarchical ordering\n"); TRUE
+    if(verbose) cat("Ordering features based on hierarchical ordering\n"); TRUE
   }else{ NA }
   objects2return$features = feature_order
 
@@ -441,11 +450,10 @@ plot_rm_layer <- function(gp, lays = "ext", verbose = FALSE){
   gp
 }
 plot_blank <- function(gp, lays = "ext", ...){
+  if(!is.null(gp$facet)) gp <- gp + theme(strip.text.x = element_blank())
   if("patchwork" %in% class(gp) && isTRUE(length(gp$patches$plots) > 0)){
     for(i in 1:length(gp$patches$plots)){
       y <- gp$patches$plots[[i]]; if(length(y$layers) == 0) next
-      print(class(y))
-      print(names(y))
       gp$patches$plots[[i]] = plot_rm_layer(y, lays = lays, ...) + theme_axes()
     }
     gp
@@ -603,7 +611,7 @@ mytheme <- ggplot2::theme_classic() +
 # inspired from
 # https://rdrr.io/cran/ggpmisc/src/R/stat-quadrant-counts.R
 # https://cran.r-project.org/web/packages/ggplot2/vignettes/extending-ggplot2.html
-quadrant_loc = function(qcut, center = FALSE) {
+stat_quadrant_loc = function(qcut, center = FALSE) {
   qposition = list()
   for(i in 1:ncol(qcut)){
     for(j in 1:nrow(qcut)){
@@ -623,10 +631,12 @@ quadrant_loc = function(qcut, center = FALSE) {
   }; colnames(qposition) <- names(dimnames(qcut))
   qposition
 }
-quadrant_fun = function(
+stat_quadrant_fun = function(
   data, scales, params,
-  xintercept = 0, yintercept = 0, type = "count", center = FALSE
+  xintercept = 0, yintercept = 0, type = "count", center = FALSE,
+  loc_type = c("position", "component")
 ) {
+  loc_type = match.arg(loc_type)
   qlimits = list(x = xintercept, y = yintercept)
   qcounts <- table(lapply(
     X = setNames(names(qlimits), names(qlimits)),
@@ -638,7 +648,13 @@ quadrant_fun = function(
         ifelse(y > qlimits[[x]], hi_i, lo_i)
       }else{ Hmisc::cut2(x = y, cuts = qlimits[[x]]) }
   }))
-  qposition <- quadrant_loc(qcut = qcounts, center = center)
+  qposition <- if(loc_type == "position"){
+    stat_quadrant_loc(qcut = qcounts, center = center)
+  }else{
+    colnames(qcounts) <- c("n", "p")[1:ncol(qcounts)]
+    rownames(qcounts) <- c("n", "p")[1:nrow(qcounts)]
+    data.frame(qcounts)[, -3]
+  }
   qposition$count <- if(type == "percent"){
     scales::percent(c(qcounts / sum(qcounts)))
   }else{ c(qcounts) }
@@ -648,7 +664,7 @@ quadrant_fun = function(
 StatQuadrant <- ggproto(
   "StatQuadrant", Stat,
   required_aes = c("x", "y"),
-  compute_panel = quadrant_fun,
+  compute_panel = stat_quadrant_fun,
   default_aes = ggplot2::aes(
     x = stat(x), y = stat(x),
     label = sprintf("%s", stat(count))
@@ -704,6 +720,64 @@ margin_density = function(data, x, group){
   ggplot(data, aes_string(x, fill=group)) +
     geom_density(alpha=.5) + theme_void() +
     theme(legend.position = "none")
+}
+
+plot_facet_wrap = function(p, facet, ...) {
+  p + facet_wrap(facets = paste("~", facet), ...) +
+    theme(
+      strip.background = element_rect(fill = NA),
+      strip.text = element_text(face = "bold")
+    )
+}
+
+scatter_contour = function(
+  data, axis_x, axis_y, axis_z = NULL, dp = TRUE
+) {
+  if(is.null(data$Density) && is.null(axis_z)){
+    data$Density <- 0
+    dps = if(isTRUE(dp)){
+      rowSums(data[, c(axis_x, axis_y)] > 0) > 1
+    }else{ rownames(data) }
+    tmp = try(MASS_kde2d(
+      x = data[dps, axis_x],
+      y = data[dps, axis_y]
+    ), silent = TRUE)
+    if(class(tmp) != "try-error"){
+      data[dps, ]$Density <- tmp; axis_z = "Density"
+    }else{ data$Density = NULL }
+  }
+  aesy = if(!is.null(axis_z)){
+    aes_string(x = axis_x, y = axis_y, color = axis_z)
+  }else{ aes_string(x = axis_x, y = axis_y) }
+  p <- ggplot(data = data, mapping = aesy) + geom_point(size = 0.5)
+  if(!is.null(axis_z))
+    p <- p + geom_density2d(data = data[dps, ], colour = "#c0c5ce")
+  return(p)
+}
+
+scatter_summary_df = function(
+  data, features, threshold = 0, group = NULL
+) {
+  if(is.null(group)){ data$Data = "Data"; group = "Data" }
+  groups = levels(factor(data[, group]))
+  features_stats = lapply(
+    X = 1:ncol(features),
+    FUN = function(i){
+      pdata_i = data[, c(features[1, i], features[2, i])]
+      colnames(pdata_i) <- c("x", "y")
+      lapply(
+        X = setNames(nm = groups),
+        FUN = function(x){
+          y <- stat_quadrant_fun(
+            pdata_i[data[, group] == x, ],
+            xintercept = threshold, yintercept = threshold,
+            type = "percent", loc_type = "component"
+          ); y[, 1] <- paste0(features[1, i], y[, 1])
+          y[, 2] <- paste0(features[2, i], y[, 2]); y
+        }
+      )
+  })
+  suppressMessages(reshape2::melt(features_stats))
 }
 
 ### Utilities ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

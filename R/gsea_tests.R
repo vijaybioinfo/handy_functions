@@ -108,9 +108,7 @@ gsea_tests <- function(
   if(method == "fgsea"){
     fgseaRes <- fgsea(
       pathways = gset_list,
-      stats = vals,
-      minSize = 3,
-      maxSize = 500,
+      stats = vals, # removed min and max size 2021-06-29
       nproc = ncores,
       nperm = 10000
     )
@@ -337,8 +335,7 @@ gsea_matrix <- function(
     metadata <- metadata[colnames(mat), ]
   }
   if(verbose) cat("Filtering matrix\n")
-  #if(exp_thr > 0)
-  mat <- mat[Matrix::rowMeans(mat) > exp_thr, ]
+  if(exp_thr > 0) mat <- mat[Matrix::rowMeans(mat) > exp_thr, ]
   features <- rownames(mat); group_column <- ""
   if(verbose) cat("Features:", length(features), head(features), tail(features), sep = "\n")
   if(!is.null(metadata)){
@@ -358,7 +355,7 @@ gsea_matrix <- function(
       }
       mygroups$column <- groups[1]
     }else{
-      if(verbose) cat("Object class", class(mygroups), " given\n")
+      if(verbose) cat("Object class", class(groups), " given\n")
       mygroups <- groups
     }; group_column <- paste0(unique(mygroups$column), collapse = "-")
   }else{ # when the metrics are given
@@ -440,7 +437,7 @@ gsea_matrix <- function(
 
 #' GSEA summaries
 #'
-#' @description `gsea_plot_summary` creates plots from GSEA results.
+#' @description `gsea_summary_plot` creates plots from GSEA results.
 #'
 #' @details This is a function that takes a list or an object from `gsea_tests`
 #' and plots a heatmap and a radar plot. It also writes a table of the results.
@@ -465,12 +462,12 @@ gsea_matrix <- function(
 #' @importFrom rescale scales
 #'
 #' @examples
-#' gsea_tab = gsea_plot_summary(tests_list = gsea_results)
+#' gsea_tab = gsea_summary_plot(tests_list = gsea_results)
 #'
 #' @export
 #'
 
-gsea_plot_summary <- function(
+gsea_summary_plot = gsea_plot_summary = function(
   tests_list = NULL,
   type = c("NES", "padj", "NLE", "ES", "LE"),
   path = "./",
@@ -482,6 +479,75 @@ gsea_plot_summary <- function(
   radar_transpose = FALSE,
   ... # arguments for pheatmap
 ){
+  gsea_summary_list = gsea_summary(
+    tests_list = tests_list,
+    type = type,
+    path = path,
+    padjthr = padjthr,
+    nesthr = nesthr,
+    pathways = pathways
+  )
+  plot_var = gsea_summary_list[[2]]
+  fname0 = gsea_summary_list[[3]]
+
+  tmysum <- mysum <- gsea_summary_list[[1]]
+  tmysum[is.na(tmysum)] <- 0
+  mysum <- if(any(colnames(mysum) %in% axes$columns)){
+    mysum[, axes$columns[axes$columns %in% colnames(mysum)]]
+  }else{
+    hc <- hclust(dist(scale(t(tmysum))))
+    mysum[, hc$labels[hc$order]]
+  }
+  mysum <- if(any(rownames(mysum) %in% axes$rows)){
+    mysum[axes$rows[axes$rows %in% rownames(mysum)], ]
+  }else{
+    hc <- hclust(dist(scale(tmysum)))
+    mysum[hc$labels[hc$order], ]
+  }
+  if(isTRUE(na.rm)) mysum[is.na(mysum)] <- 0
+
+  x <- pheatmap::pheatmap(
+    mat                  = mysum,
+    cluster_rows         = FALSE,
+    cluster_cols         = FALSE,
+    scale                = 'none',
+    border_color         = NA,
+    show_colnames        = TRUE,
+    show_rownames        = TRUE,
+    main                 = plot_var[[1]]$title,
+    na_col               = "#BEBEBE",
+    annotation_legend    = TRUE,
+    annotation_names_col = TRUE,
+    annotation_names_row = TRUE,
+    drop_levels          = TRUE,
+    filename             = paste0(fname0, "_heatmap.pdf"),
+    width = 10, height = 7,
+    ...
+  );
+
+  # Radar plot
+  mysum_radar <- if(isTRUE(radar_transpose)) data.frame(t(mysum)) else mysum
+  mysum_radar[is.na(mysum_radar)] <- 0; mysum_radar2 <- mysum_radar
+  mysum_radar[mysum_radar < 0] <- 0
+  p1 <- make_radar(mysum_radar, mid_point = nesthr) + labs(title = "Enriched")
+  mysum_radar2[mysum_radar2 > 0] <- 0; mysum_radar2 <- abs(mysum_radar2)
+  p2 <- make_radar(mysum_radar2, mid_point = nesthr) + labs(title = "Depleted") + theme(legend.position = "none")
+  pleg <- cowplot::get_legend(p1)
+  p1 <- p1 + theme(legend.position = "none")
+  pdf(paste0(fname0, "_radar.pdf"), width = 10, height = 10)
+  print(p1); print(p2); plot(pleg)
+  dev.off()
+  return(list(data = mysum, heatmap = x, radar_pos = p1, radar_ned = p2, legend = pleg))
+}
+
+gsea_summary = function(
+  tests_list = NULL,
+  type = c("NES", "padj", "NLE", "ES", "LE"),
+  path = "./",
+  padjthr = 0.05,
+  nesthr = 1,
+  pathways = NULL
+) {
   type <- match.arg(type)
   round2 <- function(x) round(x, digits = 2)
   nlog10 <- function(x) -log10(x)
@@ -510,71 +576,26 @@ gsea_plot_summary <- function(
   fname0 <- paste0(path, "summary_", nrow(mygseas), "tests_", type)
   data.table::fwrite(x = mygseas, file = paste0(fname0, ".txt"), sep = "\t")
 
-  thistab <- mygseas[mygseas$padj <= padjthr & (mygseas[[type]] >= nesthr | mygseas[[type]] <= -nesthr), ]
-  fname0 <- paste0(path, "summary_", type, nesthr, "_padj", padjthr)
+  mygseas <- mygseas[mygseas$padj <= padjthr & (mygseas[[type]] >= nesthr | mygseas[[type]] <= -nesthr), ]
 
-  if(nrow(thistab) == 0){
+  if(nrow(mygseas) == 0){
     warning("None passed p-value <= ", padjthr, " nor ", type, " of ", nesthr);
-  }else{
-    mysum <- data.table::dcast.data.table(thistab, comparison ~ pathway, value.var = names(plot_var))
-    mysum <- plot_var[[1]]$transf(data.frame(mysum[, -1], stringsAsFactors = FALSE, row.names = mysum$comparison))
-    tmysum <- mysum <- t(as.matrix(mysum))
-    tmysum[is.na(tmysum)] <- 0
-    mysum <- if(any(colnames(mysum) %in% axes$columns)){
-      mysum[, axes$columns[axes$columns %in% colnames(mysum)]]
-    }else{
-      hc <- hclust(dist(scale(t(tmysum))))
-      mysum[, hc$labels[hc$order]]
-    }
-    mysum <- if(any(rownames(mysum) %in% axes$rows)){
-      mysum[axes$rows[axes$rows %in% rownames(mysum)], ]
-    }else{
-      hc <- hclust(dist(scale(tmysum)))
-      mysum[hc$labels[hc$order], ]
-    }
-    if(isTRUE(na.rm)) mysum[is.na(mysum)] <- 0
-
-    x <- pheatmap::pheatmap(
-      mat                  = mysum,
-      cluster_rows         = FALSE,
-      cluster_cols         = FALSE,
-      scale                = 'none',
-      border_color         = NA,
-      show_colnames        = TRUE,
-      show_rownames        = TRUE,
-      main                 = plot_var[[1]]$title,
-      na_col               = "#BEBEBE",
-      annotation_legend    = TRUE,
-      annotation_names_col = TRUE,
-      annotation_names_row = TRUE,
-      drop_levels          = TRUE,
-      filename             = paste0(fname0, "_heatmap.pdf"),
-      width = 10, height = 7,
-      ...
-    );
-
-    # Radar plot
-    # library(ggradar) # devtools::install_github("ricardo-bion/ggradar")
-    # library(dplyr)
-    mysum_radar <- if(isTRUE(radar_transpose)) data.frame(t(mysum)) else mysum
-    mysum_radar[is.na(mysum_radar)] <- 0; mysum_radar2 <- mysum_radar
-    mysum_radar[mysum_radar < 0] <- 0
-    p1 <- make_radar(mysum_radar, mid_point = nesthr) + labs(title = "Enriched")
-    mysum_radar2[mysum_radar2 > 0] <- 0; mysum_radar2 <- abs(mysum_radar2)
-    p2 <- make_radar(mysum_radar2, mid_point = nesthr) + labs(title = "Depleted") + theme(legend.position = "none")
-    pleg <- cowplot::get_legend(p1)
-    p1 <- p1 + theme(legend.position = "none")
-    pdf(paste0(fname0, "_radar.pdf"), width = 10, height = 10)
-    print(p1); print(p2); plot(pleg)
-    dev.off()
-    return(list(data = mysum, heatmap = x, radar_pos = p1, radar_ned = p2, legend = pleg))
   }
+  mysum <- data.table::dcast.data.table(
+    mygseas, comparison ~ pathway, value.var = names(plot_var))
+  mysum <- plot_var[[1]]$transf(data.frame(mysum[, -1],
+    stringsAsFactors = FALSE, row.names = mysum$comparison))
+  return(list(
+    t(as.matrix(mysum)),
+    plot_var,
+    paste0(path, "summary_", type, nesthr, "_padj", padjthr)
+  ))
 }
 
-make_radar <- function(dat, mid_point = NULL){
+# library(ggradar) # devtools::install_github("ricardo-bion/ggradar")
+make_radar <- function(dat, mid_point = NULL, max_point = NULL){
   dat <- tibble::as_tibble(x = dat, rownames = "group")
-  # p2 <- dat %>% mutate_at(vars(-group), scales::rescale) %>% ggradar()
-  mid_points <- max(dat[, -1])
+  mid_points <- if(is.null(max_point)) max(dat[, -1]) else max_point
   if(is.null(mid_point)) mid_point <- mid_points / 2
   mid_points <- c(0, mid_point, mid_points)
   p <- ggradar::ggradar(

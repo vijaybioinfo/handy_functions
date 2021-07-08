@@ -29,8 +29,9 @@ dirnamen <- function(x, n = 1){
 }
 
 # Archive files/folders
-file.archive = function(pattern, name = "archive/", exclude = NULL){
+file.archive = function(pattern, name = "archive/", exclude = NULL, type = "mv"){
   # format(Sys.time(), '%Y_%m_%d/')
+  # type = match.arg(type)
   outdir = paste0(name, Sys.Date(), "/")
   dir.create(outdir, recursive = TRUE)
   y <- list.files(
@@ -40,7 +41,7 @@ file.archive = function(pattern, name = "archive/", exclude = NULL){
   )
   if(!is.null(exclude)) y <- y[!grepl(pattern = exclude, x = y)]
   if(length(y)){ # wil try to mirror the folder tree
-    command = paste0("mv ", y, " ", outdir, dirname(y), "/"); cat(command, sep = "\n")
+    command = paste0(type, " ", y, " ", outdir, dirname(y), "/"); cat(command, sep = "\n")
     ask <- if(interactive()) readline("Press 1[ENTER] to move file(s): ") else 1
     if(ask == 1){
       lapply(1:length(y), function(x){
@@ -245,7 +246,7 @@ summarise_table = function(
   summarised <- if(ncol(x) == 1){
     return(x)
   }else{
-    if(verbose) cat("Summarising:", levels(x = x[, column]), "\n")
+    if(verbose) cat("Summarising:", nlevels(x = x[, column]), "elements\n")
     y <- lapply(X = setNames(levels(x = x[, column]), levels(x = x[, column])),
       FUN = function(ident) {
         slice <- x[x[, column] == ident, , drop = FALSE]; if(verbose) cat(".")
@@ -770,4 +771,14 @@ theme_axes <- function (
     strip.background = element_blank()
   )
   # ggplot_global$theme_all_null %+replace% t
+}
+
+MASS_kde2d <- function(x, y, ...) {
+  band.nrd = MASS::bandwidth.nrd
+  dens <- MASS::kde2d(x, y,
+    h = c(ifelse(band.nrd(x) == 0, 0.1, band.nrd(x)),
+          ifelse(band.nrd(y) == 0, 0.1, band.nrd(y))),
+    ...
+  ); ix <- findInterval(x, dens$x); iy <- findInterval(y, dens$y)
+  return(dens$z[cbind(ix, iy)])
 }

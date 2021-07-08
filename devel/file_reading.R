@@ -71,19 +71,24 @@ matchArgs <- function(x, func){
 }
 
 # find a file upstream in a path
-findfile <- function(name, path = getwd(), read = FALSE, nup = 4, verbose = FALSE, ...){
-  path <- dircheck(path)
-  tmp <- ''
-  for(i in 1:nup){
+file.find <- function(
+  name,
+  path = getwd(),
+  read = FALSE,
+  n_up = 4,
+  verbose = FALSE,
+  ...
+){
+  path <- dircheck(path); tmp <- ''
+  for(i in 1:n_up){
     myfile <- paste0(path, tmp, name)
-    tmyfile <- system(paste('ls', myfile), intern = T)
+    tmyfile <- system(paste('ls', myfile), intern = TRUE)
     if(length(tmyfile) > 0) myfile <- tmyfile
     if(file.exists(myfile)){
       if(verbose) cat(basename(myfile), 'found!\n')
       if(read) return(readfile(myfile, verbose = verbose, ...)) else return(myfile)
     }
     tmp <- paste0(tmp, '../'); # print(myfile)
-  }
-  if(verbose) cat(name, 'not found\n')
-  return(data.frame(lol = 'void', stringsAsFactors = F))
+  }; if(verbose) cat(name, 'not found\n')
+  NULL
 }

@@ -54,6 +54,7 @@ crater_plot <- function(
   lfc = "log2FoldChange",
   pv = "padj",
   lfcthresh = 1,
+  lfc_flip = FALSE,
   keep_nas = FALSE,
   topgenes = 5,
   gene_pattern = NULL,
@@ -192,6 +193,10 @@ crater_plot <- function(
   mydatafc$gene_name <- features_parse_ensembl(rownames(mydatafc))
   mydatafc$log2_mean <- log2(mydatafc$mean + 1)
   mydatafc$log2_mean[which(is.na(mydatafc$log2_mean) || mydatafc$log2_mean == 0)[1]] <- 0
+  if(isTRUE(lfc_flip)){
+    mydatafc[, comp_names[1]] <- -1 * mydatafc[, comp_names[1]]
+    mydatafc[, comp_names[2]] <- -1 * mydatafc[, comp_names[2]]
+  }
 
   # Plotting border genes and with pattern
   borgenes <- topgenes

@@ -11,6 +11,7 @@ volplot <- function(
   col_feature = NULL,
   size_feature = NULL,
   gene_name = NULL,
+  gene_name_parse = TRUE,
   group = NULL,
   do_fdr_log = TRUE,
   interact = FALSE,
@@ -39,7 +40,7 @@ volplot <- function(
     }
     colnames(x) <- sub(paste0("^", gene_name, "$"), "gene_name", colnames(x)); gene_name <- "gene_name"
   }
-  x$saved_name <- gsub("'", "", rownames(x)); x$gene_name <- features_parse_ensembl(x$gene_name)
+  x$saved_name <- gsub("'", "", rownames(x))
   kk <- show_found(c(pvaltype, lfctype, col_feature, size_feature, gene_name), colnames(x), verbose = verbose)
   rownames(x) <- x$gene_name
   colnames(x) <- sub(paste0("^", pvaltype, "$"), "FDR", colnames(x))
@@ -48,14 +49,20 @@ volplot <- function(
   if(is.null(group)){
     if(verbose) cat("Setting groups\n")
     x["group"] <- "Not_significant"
+    axis_x <- if(is.character(lfcth)){
+      lfcth <- as.numeric(lfcth)
+      if(grepl("-", as.character(lfcth))){
+        lfcth_line = c(FALSE, TRUE); x['Fold'] < lfcth
+      }else{ lfcth_line = c(TRUE, FALSE); x['Fold'] > lfcth }
+    }else{
+      lfcth_line = c(TRUE, TRUE); abs(x['Fold']) > lfcth
+    }
     # change the grouping for the entries with significance but not a large enough Fold change
-    x[which(abs(x['FDR']) < pvalth & abs(x['Fold']) > lfcth ), "group"] <- "Significant"
-
+    x[which(abs(x['FDR']) < pvalth & axis_x ), "group"] <- "Significant"
     # change the grouping for the entries a large enough Fold change but not a low enough p value
-    x[which(abs(x['FDR']) > pvalth & abs(x['Fold']) > lfcth ), "group"] <- "FC"
-
+    x[which(abs(x['FDR']) > pvalth & axis_x ), "group"] <- "FC"
     # change the grouping for the entries with both significance and large enough fold change
-    x[which(abs(x['FDR']) < pvalth & abs(x['Fold']) > lfcth ), "group"] <- "DEG"
+    x[which(abs(x['FDR']) < pvalth & axis_x ), "group"] <- "DEG"
   }else{
     if(verbose) cat("Groups column given\n")
     x["group"] <- x[group]
@@ -107,7 +114,7 @@ volplot <- function(
   check_genes <- check_genes[!is.na(check_genes)]
   if(all_genes[1] != "") check_genes <- unique(c(head(all_genes, Inf), check_genes))
   check_genes <- x[check_genes, ]
-  # check_genes <- x[x$group == 'DEG', ]
+  if(isTRUE(gene_name_parse)) check_genes$gene_name <- features_parse_ensembl(check_genes$gene_name)
 
   if(verbose) cat("Found", show_commas(unique(x[, "group"]), 10), "\n")
   mycats <- unique(unlist(x["group"]))
@@ -128,6 +135,7 @@ volplot <- function(
   # Plotting # -----------------------------------------------------------------
   if(!interact){
     if(verbose) cat("-- Static plot\n")
+    str(x)
     p <- ggplot(x, aes(x = Fold, y = FDR, label = gene_name))
 
     if(isTRUE(clipp)) clipp <- 0.999
@@ -140,8 +148,8 @@ volplot <- function(
         clippit[2] <- quantile(abs(x[, 'Fold']), prob = clipp)
       }else{
         clippit <- x[tail(order(abs(x[, 'FDR'])), clipp + 1)[2], 'FDR']
-        clippit[2] <- x[tail(order(abs(x[, 'Fold'])), clipp + 1)[2], 'Fold']
-      }
+        clippit[2] <- abs(x[tail(order(abs(x[, 'Fold'])), clipp + 1)[2], 'Fold'])
+      }; print(clippit)
       p <- p + coord_cartesian(
         ylim = c(ifelse(any(x['FDR'] < 0, na.rm = TRUE), -clippit[1], 0), clippit[1]),
         xlim = c(ifelse(any(x['Fold'] < 0, na.rm = TRUE), -clippit[2], 0), clippit[2])
@@ -178,12 +186,16 @@ volplot <- function(
     }else{
       p <- p + geom_point(data = x, mapping = aesy) + colbar
     }
-    p <- p + geom_hline(yintercept = lpvalth, linetype = "dashed", color = "gray") +
-      geom_vline(xintercept = lfcth, linetype = "dashed", color = "gray")
-    if(any(x['Fold'] < 0, na.rm = TRUE)) p <- p + geom_vline(xintercept = -lfcth, linetype = "dashed", color = "gray")
-    if(any(x['FDR'] < 0, na.rm = TRUE)) p <- p + geom_hline(yintercept = -lpvalth, linetype = "dashed", color = "gray")
-    if(any(-x$Fold > 0, na.rm = TRUE)) p <- p + xlim(c(-max(abs(x$Fold), na.rm = TRUE), max(abs(x$Fold), na.rm = TRUE)))
-    if(any(-x$FDR > 0, na.rm = TRUE)) p <- p + ylim(c(-max(abs(x$FDR), na.rm = TRUE), max(abs(x$FDR), na.rm = TRUE)))
+    p <- p + geom_hline(yintercept = lpvalth, linetype = "dashed", color = "gray")
+    if(lfcth_line[1]) p <- p + geom_vline(xintercept = lfcth, linetype = "dashed", color = "gray")
+    if(any(x['Fold'] < 0, na.rm = TRUE) && lfcth_line[2])
+      p <- p + geom_vline(xintercept = -lfcth, linetype = "dashed", color = "gray")
+    if(any(x['FDR'] < 0, na.rm = TRUE))
+      p <- p + geom_hline(yintercept = -lpvalth, linetype = "dashed", color = "gray")
+    if(any(-x$Fold > 0, na.rm = TRUE))
+      p <- p + xlim(c(-max(abs(x$Fold), na.rm = TRUE), max(abs(x$Fold), na.rm = TRUE)))
+    if(any(-x$FDR > 0, na.rm = TRUE))
+      p <- p + ylim(c(-max(abs(x$FDR), na.rm = TRUE), max(abs(x$FDR), na.rm = TRUE)))
     if(only_degs){
       if(verbose) cat("DEGs only colouring\n")
       p <- p + stat_density2d(data = x[!x$group %in% c('DEG', gname), ],

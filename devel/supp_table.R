@@ -137,7 +137,8 @@ supp_table <- function(
   }
 
   if(!is.list(mytables) || is.data.frame(mytables)) mytables <- list(mytables)
-  if(is.null(names(mytables))) names(mytables) <- paste0("Table ", 1:length(mytables))
+  if(is.null(names(mytables)))
+    names(mytables) <- paste0("Table ", 1:length(mytables))
   names(mytables) <- make.unique(names(mytables))
   if(verbose > 1) str(mytables)
 
@@ -151,7 +152,8 @@ supp_table <- function(
   names(headers)[names(headers) == ""] <- "none"
   colnamestype <- unlist(headers, use.names = FALSE)
   names(colnamestype) <- unlist(sapply(headers, names), use.names = FALSE)
-  if(any(names(colnamestype) == "")) stop("Format instruction (headers) without column pattern")
+  if(any(names(colnamestype) == ""))
+    stop("Format instruction (headers) without column pattern")
 
   for(tname in names(mytables)){
     header_group = body_start_i = body_start
@@ -160,11 +162,17 @@ supp_table <- function(
     if(!is.null(select_features)) ddf <- ddf[select_features(x = ddf), ]
     if(!is.null(ddf$gene_name)) ddf$gene_name <- gsub("'", "", ddf$gene_name)
     headers2write <- lapply(
-      X = headers, # taking names (patterns) for each element in each list-vector
+      X = headers, # taking names (patterns) for each element in the list
       FUN = function(p){ # another apply to follow the order
-        y <- lapply(names(p), function(z) grep(pattern = z, x = colnames(ddf), value = TRUE) )
+        ps = names(p)[!names(p) %in% c("rev", "reverse", "exclude")]
+        y <- lapply(ps,
+          function(z) grep(pattern = z, x = colnames(ddf), value = TRUE)
+        )
         y <- unlist(y, use.names = FALSE)
-        if(any(names(p) == "reverse")) rev(y) else y
+        if(any(names(p) %in% c("rev", "reverse"))) y <- rev(y)
+        if(any(names(p) %in% "exclude"))
+          y <- y[!grepl(pattern = p[["exclude"]], x = y)]
+        return(y)
       }
     )
     taken_cols <- unname(unlist(headers2write));
@@ -174,45 +182,65 @@ supp_table <- function(
     }; if(length(taken_cols) == 0) warning("No columns found in ", tname, "\n")
     ddf <- ddf[, taken_cols, drop = FALSE]
 
-    if(verbose) cat("Rounding numbers to", round_num, "decimals ")
     tvar <- which(colnamestype == "NUMBER")
     if(length(tvar) > 0){
-      print(tvar)
-      tvar <- grep(paste0(names(tvar), collapse = "|"), colnames(ddf), value = TRUE)
-      if(verbose) cat("in", length(tvar), "columns:\n")
+      if(verbose) cat("Rounding numbers to", round_num, "decimals ")
+      tvar <- paste0(names(tvar), collapse = "|")
+      tvar <- grep(tvar, colnames(ddf), value = TRUE)
+      if(verbose) cat("- in", length(tvar), "columns:")
       if(verbose > 1) print(format(tvar, justify = "centre", trim = TRUE))
-      ddf[, tvar] <- round(ddf[, tvar], round_num)
+      ddf[, tvar] <- round(ddf[, tvar], round_num); if(verbose) cat("\n")
     }
 
-    if(isTRUE(rename_columns)){
+    tvar <- rename_columns
+    if(isTRUE(tvar) || is.character(tvar) || is.list(tvar)){
       if(verbose) cat("Renaming columns\n")
-      taken_new <- lapply(headers2write, function(x){ # parse names
-        y <- sapply(strsplit(x = x, split = "_|\\."), c)
-        if(is.null(dim(y))) return(x) # check which names are different across columns
-        tvar <- apply(y, 1, function(z) length(unique(z)) ) == length(x)
-        if(sum(tvar) == 0) tvar <- apply(y, 1, function(z) length(unique(z)) ) != length(x)
-        apply(y[tvar, , drop = FALSE], 2, function(z) paste0(z, collapse = " ") )
-      })
-      taken_new <- unname(unlist(taken_new))
-      # taken_new <- make.unique(taken_new)
-      if(verbose > 1) str(ddf)
-      colnames(ddf) <- taken_new
-    }
-    if(verbose) str(ddf)
+      taken_new <- if(isTRUE(rename_columns)){ # parse names
+        unname(unlist(lapply(headers2write, function(x){
+          y <- sapply(strsplit(x = x, split = "_|\\."), c)
+          # check which names are different across columns
+          if(is.null(dim(y))) return(x)
+          tvar <- apply(y, 1, function(z) length(unique(z)) ) == length(x)
+          if(sum(tvar) == 0)
+            tvar <- apply(y, 1, function(z) length(unique(z)) ) != length(x)
+          apply(y[tvar, , drop = FALSE], 2, function(z) paste0(z, collapse = " ") )
+        })))
+      }else{
+        if(!is.list(tvar)) rename_columns <- list(rename_columns)
+        taken_new <- colnames(ddf)
+        for(i in 1:length(rename_columns)){
+          tvar <- ifelse(is.na(rename_columns[[i]][2]), "", rename_columns[[i]][2])
+          taken_new <- gsub(rename_columns[[i]][1], tvar, taken_new)
+        }; taken_new
+      }; # taken_new <- make.unique(taken_new)
+      if(verbose > 1) str(ddf); colnames(ddf) <- taken_new
+    }; if(verbose) str(ddf)
 
     tabname = gsub(".*~", "", tname)
     if(verbose) cat("Tab name:", tabname, "\n")
     addWorksheet(wb = workfile, sheetName = tabname)
-    writeData(wb = workfile, sheet = tabname, x = paste(title_name, gsub("~.*", "", tname)))
-    heads <- sapply(headers2write, length); heads <- rep(names(heads), heads)
-    header_group <- if(any(!heads == "none")) body_start_i-1 else body_start_i <- body_start_i-1
+    writeData(
+      wb = workfile, sheet = tabname,
+      x = paste(title_name, gsub("~.*", "", tname)))
+    heads <- sapply(headers2write, length);
+    heads <- rep(names(heads), heads)
+    header_group <- if(any(!heads == "none")){
+      body_start_i-1
+    }else body_start_i <- body_start_i-1
     if(verbose) cat("Merging headers titles\n")
     for(headname in unique(heads[heads!="none"])){
       headcols <- which(heads == headname)
-      if(verbose) cat(" -", heads[headcols[1]], ":", min(headcols), " to ", max(headcols), "\n", sep = "")
-      writeData(wb = workfile, sheet = tabname, x = headname, startCol = min(headcols), startRow = header_group)
-      mergeCells(wb = workfile, sheet = tabname, cols = headcols, rows = header_group)
+      if(verbose){
+        cat(" - ", heads[headcols[1]], ": ", min(headcols),
+        " to ", max(headcols), "\n", sep = "")
+      }
+      writeData(
+        wb = workfile, sheet = tabname, x = headname,
+        startCol = min(headcols), startRow = header_group)
+      mergeCells(wb = workfile, sheet = tabname,
+        cols = headcols, rows = header_group)
     }
+    if(verbose) cat("Starting:", body_start_i, "\n")
     writeData(
       wb = workfile,
       sheet = tabname,
@@ -225,16 +253,26 @@ supp_table <- function(
       which(taken_cols %in% highlight_features)
     }else if(isTRUE(highlight_features)) 1 else highlight_features
     if(verbose) cat(" - title/caption\n")
-    addStyle(wb = workfile, sheet = tabname, style = caption_style, rows = 1, cols = 1)
+    addStyle(wb = workfile, sheet = tabname,
+      style = caption_style, rows = 1, cols = 1)
     if(verbose) cat(" - headers\n")
-    for(colname in taken_cols){
-      myformat <- colnamestype[[which(sapply(names(colnamestype), grepl, colname))]]
-      this_header = which(taken_cols %in% colname)
-      if(verbose > 1) cat("  *", colname, ">", myformat, "\n")
+    for(taken in taken_cols){
+      if(verbose > 1) cat("  *", taken, "> ")
+      tvar <- which(sapply(headers2write, function(x) any(grepl(taken, x)) ))
+      if(length(tvar) > 1){ print(tvar); print(headers2write)}
+      tvar <- names(which(sapply(names(headers[[tvar]]), grepl, taken)))
+      # tvar <- which(sapply(names(colnamestype), grepl, taken))
+      # myformat <- colnamestype[[tvar]]
+      myformat <- colnamestype[[which(names(colnamestype) %in% tvar)]]
+      this_header = which(taken_cols %in% taken)
+      if(verbose > 1) cat(myformat, "\n")
       addStyle(
-        wb = workfile, sheet = tabname, style = body_style(format_type = myformat),
-        rows = body_start_i:(nrow(ddf)+body_start_i), cols = this_header, gridExpand = TRUE
-      ); tvar <- if(this_header %in% hfeatures && heads[this_header] == "none") body_start_i else header_group
+        wb = workfile, sheet = tabname,
+        style = body_style(format_type = myformat),
+        rows = body_start_i:(nrow(ddf)+body_start_i),
+        cols = this_header, gridExpand = TRUE
+      ); tvar <- this_header %in% hfeatures && heads[this_header] == "none"
+      tvar <- if(tvar) body_start_i else header_group
       addStyle(
         wb = workfile, sheet = tabname, style = header_style(fill = color_header),
         rows = tvar:body_start_i, cols = this_header, gridExpand = TRUE
@@ -243,7 +281,8 @@ supp_table <- function(
     for(headname in heads){
       addStyle(
         wb = workfile, sheet = tabname, style = body_section_style(),
-        rows = (body_start_i+1):(nrow(ddf)+body_start_i), cols = max(which(heads == headname)),
+        rows = (body_start_i+1):(nrow(ddf)+body_start_i),
+        cols = max(which(heads == headname)),
         gridExpand = TRUE, stack = TRUE
       )
     }; if(verbose) cat(" - body bottom\n")
@@ -263,7 +302,8 @@ supp_table <- function(
 
     if(verbose) cat("Setting widths\n") # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     setColWidths(wb = workfile, sheet = tabname, cols = 1:ncol(ddf), widths = 16)
-    if(any(!heads == "none")) setRowHeights(wb = workfile, sheet = tabname, rows = header_group, heights = 36)
+    if(any(!heads == "none"))
+      setRowHeights(wb = workfile, sheet = tabname, rows = header_group, heights = 36)
     setRowHeights(wb = workfile, sheet = tabname, rows = body_start_i, heights = 18)
   }
   if(!is.null(filename)){
