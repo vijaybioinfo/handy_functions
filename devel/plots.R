@@ -686,6 +686,38 @@ stat_quadrant <- function (
   )
 }
 
+StatCentroid <- ggplot2::ggproto(
+  "StatCentroid", ggplot2::Stat,
+  required_aes = c("x", "y"),
+  compute_panel = function(
+    data, scales, params, center_by = "colour", type = median
+  ) {
+    `%>%` = dplyr::`%>%`
+    data$center_by = data[, center_by]
+    centroid = data %>% dplyr::group_by(center_by) %>%
+      dplyr::summarize(x = type(x = x), y = type(x = y))
+    centroid
+  },
+  default_aes = ggplot2::aes(
+    x = stat(x), y = stat(x),
+    label = stat(center_by)
+  )
+)
+
+stat_centroid <- function (
+  mapping = NULL, data = NULL, geom = "text", position = "identity",
+  center_by = "colour", type = median, na.rm = FALSE,
+  show.legend = FALSE, inherit.aes = TRUE, ...
+) {
+  ggplot2::layer(
+    stat = StatCentroid, data = data, mapping = mapping,
+    geom = geom, position = position, show.legend = show.legend,
+    params = list(
+      na.rm = na.rm, center_by = center_by, type = type, ...
+    )
+  )
+}
+
 plot_add_quadrants = plots_add_quadrants = function(
   plot, limits = list(0, 0), ...
 ) {
@@ -695,7 +727,9 @@ plot_add_quadrants = plots_add_quadrants = function(
     stat_quadrant(xintercept = limits[[1]], yintercept = limits[[2]], ...)
 }
 
-plot_squared = plots_squared = function(gp, column_names = NULL, limit = NULL, verbose = FALSE){
+plot_squared = plots_squared = function(
+  gp, column_names = NULL, limit = NULL, verbose = FALSE
+){
   column_map <- gsub("~", "", as.character(gp$mapping))
   if(verbose) cat("Mapping:", paste(column_map, collapse = ", "), "\n")
   if(is.null(column_names)) column_names <- column_map[1:2]
@@ -821,6 +855,8 @@ make_grid <- function(x, ncol = NULL, verbose = FALSE){
   if(verbose) cat('nRow:', nRow, '\nncol', ncol, '\n')
   return(c(nRow, ncol, ifelse(vecL <= 2,  8, 4)))
 }
+
+plot_size = function(x) sapply(x, function(y) min(c(25, y * 7)) )
 
 make_title <- function(x){
   y <- gsub("orig|\\.", "_", casefold(x, upper = TRUE), ignore.case = TRUE)

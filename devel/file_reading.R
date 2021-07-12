@@ -79,7 +79,8 @@ file.find <- function(
   verbose = FALSE,
   ...
 ){
-  path <- dircheck(path); tmp <- ''
+  #path <- dircheck(path);
+  tmp <- ''
   for(i in 1:n_up){
     myfile <- paste0(path, tmp, name)
     tmyfile <- system(paste('ls', myfile), intern = TRUE)

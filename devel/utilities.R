@@ -1,12 +1,19 @@
 #!/usr/bin/R
 
 # Directory check
-dircheck <- function(dname, ...){
-  if(!grepl("/$", dname) && dir.exists(dname)) dname <- paste0(dname, "/")
-  tvar <- !grepl("_$", dname) && !grepl("/$", dname) && !file.exists(dname)
-  if(tvar) dname <- paste0(dname, "_")
-  if(grepl("\\/$", dname)) dir.create(dname, ...)
-  return(dname)
+dircheck = prefix_check = function(
+  path, sufix = "_", ...
+){
+  if(!grepl("\\/$", path) && dir.exists(path)) path <- paste0(path, "/")
+  if(!is.null(sufix)){
+    tvar <- !grepl(paste0(sufix, "$"), path) &&
+      !grepl("\\/$", path) && !file.exists(path)
+    if(tvar) path <- paste0(path, sufix)
+  }
+  if(grepl("\\/$", path)){
+    dir.create(path = path, ...)
+  }else if(!dir.exists(dirname(path))) dir.create(path = dirname(path), ...)
+  return(path)
 }
 
 # change directory and if doesn't exists create it

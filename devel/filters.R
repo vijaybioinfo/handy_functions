@@ -570,7 +570,7 @@ fig_set_data <- function(
   verbose = TRUE
 ){
   # Digesting
-  config <- fig_config_check(config = config)
+  config <- fig_config_check(config)
   config$edataf <- if(is.null(config$edataf)) "none" else config$edataf
   config$edatafbk <- if(is.null(config$edatafbk)) "none" else config$edatafbk
   config$metadatafbk <- if(is.null(config$metadatafbk)) "file_name" else config$metadatafbk
@@ -674,7 +674,7 @@ fig_set_identities <- function(
 ){
   if(is.null(idents)){
     mdata$Identity = factor(rep("Data", nrow(mdata))); return(mdata)
-  }
+  }; if(is.character(idents)) idents = lapply(idents, function(x) list(name = x) )
   idents <- if(is.null(idents$name)) idents else list(idents)
   if(is.null(names(idents))){
     new_cnames <- paste0("Identity", c("", 1:20));
@@ -686,10 +686,7 @@ fig_set_identities <- function(
   for(i in names(idents)){
     if(verbose) cat("-- Column(s):", show_commas(idents[[i]]$name), "\n")
     tvar <- idents[[i]]$name %in% colnames(mdata)
-    if(any(!tvar)){
-      warning("Column(s) not found: ", show_commas(idents[[i]]$name[!tvar]))
-      warning("Possible values: ", show_commas(colnames(mdata), Inf))
-    }
+    if(any(!tvar)) stop("Column(s) missing: ", show_commas(idents[[i]]$name[!tvar]))
     mdata$tmp <- ident_combine(mdata, idents[[i]]$name, "_")
     # mdata$tmp <- do.call(paste, c(remove.factors(mdata[, idents[[i]]$name, drop = FALSE]), sep = "_"))
     mdata$tmp <- if(!is.null(idents[[i]]$identnames)){
