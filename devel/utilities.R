@@ -351,7 +351,6 @@ vlist2df <- function(x, maxlen = NULL){
 vlist2df_diff <- function(x, y, delim = "Not found"){
   final <- lapply(names(x), function(z){
     x1 <- !y[[z]] %in% x[[z]] # values missing in the subset
-    print(sum(x1))
     if(sum(x1) > 0) c(x[[z]], delim, y[[z]][x1]) else x[[z]]
   }); ddf <- vlist2df(final)
   sizes <- paste0(sapply(x, length), "of", sapply(y, length))
@@ -718,7 +717,7 @@ count_transformation <- function(
   dtype <- casefold(sub("log2", "", transf), upper = TRUE) # extract transformation type
   if(grepl("cpm", casefold(transf))){
     if(verbose) cat('Counts to CPM\n')
-    sweep(cts, 2, colSums(cts), '/') * norm_fact
+    cts <- sweep(cts, 2, colSums(cts), '/') * norm_fact
   }
   if(dtype == ""){ # if no info, try to identify the type of data
     if(verbose) cat('Detecting type\n')
@@ -731,9 +730,9 @@ count_transformation <- function(
 
   if(isTRUE(grepl('log', transf))){
     bs <- as.numeric(sub('log', '', transf))
-    dtype <- paste0("log", bs, "(", dtype, " + ", pcount, ")")
-    if(verbose) cat(dtype, 'transformation\n')
     if(is.na(bs)) bs <- exp(1)
+    dtype <- paste0("log", bs, "(", dtype, " + ", pcount, ")")
+    if(verbose) cat('log', bs, 'transformation\n')
     cts <- log(cts + pcount, bs)
   }else if(isTRUE(transf == 'vst')){
     if(verbose) cat('Variance Stabilizing transformation\n')
@@ -747,39 +746,6 @@ count_transformation <- function(
 }
 
 ### Plotting ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-theme_axes <- function (
-  base_size = 11,
-  base_family = "",
-  base_line_size = base_size/22,
-  base_rect_size = base_size/22
-){
-  half_line <- base_size/2
-  t <- theme(
-    line = element_line(
-      colour = "black", size = base_line_size,
-      linetype = 1, lineend = "butt"), rect = element_rect(fill = "white",
-      colour = "black", size = base_rect_size, linetype = 1
-    ),
-    text = element_text(
-      family = base_family, face = "plain",
-      colour = "black", size = base_size, lineheight = 0.9,
-      hjust = 0.5, vjust = 0.5, angle = 0, margin = margin(),
-      debug = FALSE
-    ),
-    axis.title.x = element_blank(),
-    axis.title.y = element_blank(),
-    axis.text.x = element_blank(),
-    axis.text.y = element_blank(),
-    legend.position = "none",
-    plot.title = element_blank(),
-    plot.subtitle = element_blank(),
-    plot.caption = element_blank(),
-    strip.text = element_blank(),
-    strip.background = element_blank()
-  )
-  # ggplot_global$theme_all_null %+replace% t
-}
-
 MASS_kde2d <- function(x, y, ...) {
   band.nrd = MASS::bandwidth.nrd
   dens <- MASS::kde2d(x, y,

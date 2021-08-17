@@ -93,7 +93,7 @@ gsea_tests <- function(
     y <- x[!is.na(x)]; gsub("'| ", "", y[y != ""])
   }); if(is.null(names(gset_list))) names(gset_list) <- paste0("g", 1:length(gset_list))
   if(verbose) cat("Number of sets:", length(gset_list), "\n")
-  if(verbose) str(gset_list[head(1:length(gset_list))])
+  if(verbose) str(gset_list, no.list = 4)
   if(all(sapply(gset_list, function(x) sum(x %in% names(vals)) ) == 0)) warning("No feature was found")
 
   ## Correcting for multiple-hypothesis
@@ -121,31 +121,20 @@ gsea_tests <- function(
     rev(fgseaRes[ES < 0, ][head(order(pval), n = 10), pathway])
   )
   suffix <- ifelse(is.null(metric), "", paste0("_", metric))
-  if(length(topPathways) > 2){
-    if(verbose) cat("Plotting top enrichements\n")
-    fname <- paste0(path, "a1_", method, '_top_up_and_down_pathways', suffix, '.pdf')
-    pdf(sub("\\/a1$", "_a1", fname), width = 8, ifelse(length(topPathways) >= 16, 16, 8))
-    try(plotGseaTable(gset_list[topPathways], vals, fgseaRes, gseaParam = 1))
-    graphics.off()
-    tvar <- if("leadingEdge" %in% colnames(fgseaRes)) ncol(fgseaRes) - 1 else ncol(fgseaRes)
-    write.csv(data.frame(fgseaRes[, 1:(tvar)]), file = sub("pdf", "csv", fname), row.names = FALSE)
-  }
 
   go_names <- suppressWarnings(mdgsa::getGOnames(names(gset_list), verbose = TRUE));
   names(go_names) <- names(gset_list)
   go_names <- gsub(" activity|activity", "", sub("(^[A-z]{41,}).*", "\\1", go_names))
   if(verbose) cat("\n")
+  suffy <- paste0(
+    suffix, "_", method, ifelse(isTRUE(classical_plot), "classic", "")
+  )
   for(indx in names(gset_list)){
     if(verbose) cat("----------------\t", indx, "\n")
     allgs <- sub("'", "", gset_list[[indx]]); allgs <- unique(allgs[allgs != ""])
     gs <- allgs[allgs %in% guniverse]
     if(verbose) cat(length(gs), "of", length(allgs), "found\n")
     if(length(gs) < 2) next
-    suffy <- paste0(
-      suffix, "_", method, "_", ifelse(isTRUE(classical_plot), "classic_", ""),
-      ifelse(length(gs) != length(allgs), paste0(length(gs), "of"), ""),
-      length(allgs)
-    )
 
     if(!is.na(go_names[indx])){
       if(verbose) cat(go_names[indx], "\n")
@@ -154,6 +143,7 @@ gsea_tests <- function(
     indxname <- gsub("_{2,}", "_", indxname)
 
     fname <- paste0(path, indxname, suffy, '.pdf')
+    if(file.exists(fname) & file.size(fname) > 3620) next
     if(verbose) cat('Testing', metric, '\n'); set.seed(myseed)
     pval <- paste0("Adjusted P-value: ", round(fgseaRes[pathway == indx, "padj"], 5))
     pdf(fname, height = myheight, width = 7, onefile = TRUE)
@@ -317,7 +307,8 @@ gsea_matrix <- function(
   plot_it = TRUE,
   exp_thr = 0,
   classical_plot = FALSE,
-  verbose = TRUE
+  verbose = TRUE,
+  ...
 ){
   # Digesting
   method <- match.arg(method)
@@ -351,7 +342,7 @@ gsea_matrix <- function(
         data.frame(G1 = groups_comb[, 1], G2 = groups_comb[, 2])
       }else{
         groups_comb <- groups[-1]; groups_comb <- groups_comb[!groups_comb %in% "REST"]
-        data.frame(G1 = groups_comb[-1], G2 = rep("REST", length(groups_comb) - 1))
+        data.frame(G1 = groups_comb, G2 = rep("REST", length(groups_comb)))
       }
       mygroups$column <- groups[1]
     }else{
@@ -390,7 +381,7 @@ gsea_matrix <- function(
 
   # Performing tests
   tests_list_f <- paste0(path, "tests_", group_column, "_", exp_thr, "_", length(gsea_list), "lists.rds")
-  if(!file.exists(tests_list_f)){
+  if(!file.exists(tests_list_f) || (nrow(mygroups) != (ncol(res) + 1))){
     tests_list <- list()
     for(i in 1:nrow(mygroups)){
       if(verbose) cat("Comparison:", mygroups[i, ]$name, "\n")
@@ -476,13 +467,15 @@ gsea_summary_plot = gsea_plot_summary = function(
   pathways = NULL,
   na.rm = FALSE,
   axes = list(columns = NULL, rows = NULL),
-  radar_transpose = FALSE,
-  ... # arguments for pheatmap
+  axes_cluster = TRUE,
+  heatmap_type = "gg",
+  return_plot = TRUE,
+  ... # arguments for the heatmap
 ){
   gsea_summary_list = gsea_summary(
     tests_list = tests_list,
     type = type,
-    path = path,
+    path = path, cache = TRUE,
     padjthr = padjthr,
     nesthr = nesthr,
     pathways = pathways
@@ -492,52 +485,63 @@ gsea_summary_plot = gsea_plot_summary = function(
 
   tmysum <- mysum <- gsea_summary_list[[1]]
   tmysum[is.na(tmysum)] <- 0
-  mysum <- if(any(colnames(mysum) %in% axes$columns)){
-    mysum[, axes$columns[axes$columns %in% colnames(mysum)]]
-  }else{
+  if(any(colnames(mysum) %in% axes$columns)){
+    mysum <- mysum[, axes$columns[axes$columns %in% colnames(mysum)]]
+  }else if(isTRUE(axes_cluster)){
     hc <- hclust(dist(scale(t(tmysum))))
-    mysum[, hc$labels[hc$order]]
+    mysum <- mysum[, hc$labels[hc$order]]
   }
-  mysum <- if(any(rownames(mysum) %in% axes$rows)){
-    mysum[axes$rows[axes$rows %in% rownames(mysum)], ]
-  }else{
+  if(any(rownames(mysum) %in% axes$rows)){
+    mysum <- mysum[axes$rows[axes$rows %in% rownames(mysum)], ]
+  }else if(isTRUE(axes_cluster)){
     hc <- hclust(dist(scale(tmysum)))
-    mysum[hc$labels[hc$order], ]
+    mysum <- mysum[hc$labels[hc$order], ]
   }
   if(isTRUE(na.rm)) mysum[is.na(mysum)] <- 0
 
-  x <- pheatmap::pheatmap(
-    mat                  = mysum,
-    cluster_rows         = FALSE,
-    cluster_cols         = FALSE,
-    scale                = 'none',
-    border_color         = NA,
-    show_colnames        = TRUE,
-    show_rownames        = TRUE,
-    main                 = plot_var[[1]]$title,
-    na_col               = "#BEBEBE",
-    annotation_legend    = TRUE,
-    annotation_names_col = TRUE,
-    annotation_names_row = TRUE,
-    drop_levels          = TRUE,
-    filename             = paste0(fname0, "_heatmap.pdf"),
-    width = 10, height = 7,
-    ...
-  );
+  ph <- if(isTRUE(grepl("gg", heatmap_type))){
+    tmp = c("#67001f", "#b2182b", "#d6604d", "#f4a582", "#fddbc7", "#f7f7f7", "#d1e5f0", "#92c5de", "#4393c3", "#2166ac", "#053061")
+    mypalette <- colorRampPalette(colors = rev(tmp), space = 'Lab')
+    ddf = reshape2::melt(mysum)
+    ddf$Var1 <- factor(ddf$Var1, rev(rownames(mysum)))
+    ddf$Var2 <- factor(as.character(ddf$Var2), colnames(mysum))
+    p <- ggplot(ddf, aes(x = Var2, y = Var1)) +
+      geom_tile(aes(fill = value)) +
+      scale_fill_gradientn(colours = mypalette(20)) +
+      labs(fill = NULL, x = NULL, y = NULL)
+    pdf(paste0(fname0, "_heatmap.pdf"), width = 10); print(p); p
+  }else{
+    pheatmap::pheatmap(
+      mat                  = mysum,
+      cluster_rows         = FALSE,
+      cluster_cols         = FALSE,
+      scale                = 'none',
+      border_color         = NA,
+      show_colnames        = TRUE,
+      show_rownames        = TRUE,
+      main                 = plot_var[[1]]$title,
+      na_col               = "#BEBEBE",
+      annotation_legend    = TRUE,
+      annotation_names_col = TRUE,
+      annotation_names_row = TRUE,
+      drop_levels          = TRUE,
+      filename             = paste0(fname0, "_heatmap.pdf"),
+      width = 10, height = 7,
+      ...
+    );
+  }
 
   # Radar plot
-  mysum_radar <- if(isTRUE(radar_transpose)) data.frame(t(mysum)) else mysum
-  mysum_radar[is.na(mysum_radar)] <- 0; mysum_radar2 <- mysum_radar
-  mysum_radar[mysum_radar < 0] <- 0
-  p1 <- make_radar(mysum_radar, mid_point = nesthr) + labs(title = "Enriched")
-  mysum_radar2[mysum_radar2 > 0] <- 0; mysum_radar2 <- abs(mysum_radar2)
-  p2 <- make_radar(mysum_radar2, mid_point = nesthr) + labs(title = "Depleted") + theme(legend.position = "none")
-  pleg <- cowplot::get_legend(p1)
-  p1 <- p1 + theme(legend.position = "none")
+  ppos <- plot_radar(mysum, threshold = nesthr) + labs(title = "Enriched")
+  pneg <- plot_radar(mysum, threshold = nesthr, enriched = FALSE) +
+    labs(title = "Depleted") + theme(legend.position = "none")
+  pleg <- cowplot::get_legend(ppos)
+  ppos <- ppos + theme(legend.position = "none")
   pdf(paste0(fname0, "_radar.pdf"), width = 10, height = 10)
-  print(p1); print(p2); plot(pleg)
-  dev.off()
-  return(list(data = mysum, heatmap = x, radar_pos = p1, radar_ned = p2, legend = pleg))
+  print(ppos); print(pneg); plot(pleg); graphics.off()
+  if(isTRUE(return_plot)){
+    return(list(data = mysum, heatmap = ph, radar_pos = ppos, radar_ned = pneg, legend = pleg))
+  }; invisible(x = NULL)
 }
 
 gsea_summary = function(
@@ -546,7 +550,8 @@ gsea_summary = function(
   path = "./",
   padjthr = 0.05,
   nesthr = 1,
-  pathways = NULL
+  pathways = NULL,
+  cache = FALSE
 ) {
   type <- match.arg(type)
   round2 <- function(x) round(x, digits = 2)
@@ -574,7 +579,8 @@ gsea_summary = function(
   }))
   if(!is.null(pathways)) mygseas <- mygseas[as.character(mygseas$pathway) %in% pathways, ]
   fname0 <- paste0(path, "summary_", nrow(mygseas), "tests_", type)
-  data.table::fwrite(x = mygseas, file = paste0(fname0, ".txt"), sep = "\t")
+  if(isTRUE(cache))
+    data.table::fwrite(x = mygseas, file = paste0(fname0, ".txt"), sep = "\t")
 
   mygseas <- mygseas[mygseas$padj <= padjthr & (mygseas[[type]] >= nesthr | mygseas[[type]] <= -nesthr), ]
 
@@ -785,4 +791,22 @@ gsea_plotEnrichment <- function(
     # Reset to default
     par(def.par)
   }
+}
+
+gsea_process_list = function(
+    slist, include = NULL, exclude = NULL, global = list(), fun = NULL, ...
+) {
+  slist <- if(!is.list(slist)) as.list(slist) else slist
+  slist <- unlist(lapply(slist, as.list), recursive = FALSE)
+  slist <- sapply(slist, function(x){ y <- x[!is.na(x)]; y[which(y != "")] })
+  slist <- slist[sapply(slist, length) > 0]; #str(slist)
+  slist <- c(global, slist[!names(slist) %in% names(global)])
+  tmp = names(slist)
+  if(is.character(include)) tmp = tmp[grep(include, tmp, ignore.case = TRUE)]
+  if(is.character(exclude)) tmp = tmp[!grepl(exclude, tmp, ignore.case = TRUE)]
+  if(is.numeric(include)) tmp = tmp[include]
+  if(is.numeric(exclude)) tmp = tmp[-exclude]
+  slist = slist[tmp]
+  if(!is.null(fun)) slist = lapply(X = slist, FUN = fun, ...)
+  return(slist)
 }

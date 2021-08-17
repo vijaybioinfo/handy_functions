@@ -150,3 +150,80 @@ fastq_reorder_checksum <- function(x, sortit = TRUE){
   if(sortit) return(sort(w))
   w
 }
+
+fastq_copy <- function(x){
+  if(any(!file.exists(sub(".*> ", "", x)))){
+    cat("====================== Copying files\n")
+    void <- sapply(x, function(y){
+        cat(gsub("cat |_001.fastq.gz", "", y))
+        if (!file.exists(sub(".*> ", "", y))){
+          cat("\n")
+        }else{ cat(" - existing\n") }
+        system(y)
+      })
+  }else{ cat("====================== Files copied\n") }
+}
+
+fastq_section_samples <- function(
+  x,
+  samples_section_csv = paste0("../", basename(getwd()), "_samples_section.csv")
+){
+  samples_section <- sapply(fastq_unique_names(x), function(y){
+    paste0(c(y, unique(x[grep(y, x)])), collapse = ",")
+  }, USE.NAMES = FALSE)
+  print(head(samples_section))
+  fileConn <- file(samples_section_csv)
+  writeLines(samples_section, fileConn); close(fileConn)
+  system(paste("head", samples_section_csv))
+  cat(
+    "--- Copy/paste the following into the template ---",
+    paste0("system(\"sed 's/,/\\t/g' ", samples_section_csv, " | head -n 20\")"),
+    "remember removing '| head -n' to copy all files if you do so from the terminal",
+    sep = "\n"
+  )
+  cat("Number of files per sample (by commas)\n")
+  for(i in 1:7) system(paste0("cut -d, -f", i, " ", samples_section_csv, " | sort -u | wc -l"))
+}
+
+fastq_checksum <- function(
+  x,
+  checksum_file = paste0("../", basename(getwd()), "_checksum_fastq.txt")
+){
+  if(!file.exists(checksum_file)) system(paste0("echo >", checksum_file))
+  void <- sapply(x, function(y){
+    cat(which(x == y), "/", length(x), y)
+    existing <- as.numeric(system(paste("grep -s", y, checksum_file, "| wc -l"), intern = TRUE))
+    if(existing == 0){
+      cat(" - adding\n"); system(paste("md5sum", y, ">>", checksum_file))
+    }else{ cat(" - added\n") }
+  })
+  system(paste("head", checksum_file))
+  cat(
+    "--- Copy/paste the following into the template ---",
+    paste0("system(\"sed 's/.* //g' ", checksum_file, "\") # names"),
+    paste0("system(\"sed 's/ .*//g' ", checksum_file, "\") # sums"),
+    paste0("r1 = system(\"sed 's/.* //g' ", checksum_file, " | grep R1\", intern = TRUE) # R1"),
+    "cat(r1, sep = '\\n')",
+    sep = "\n"
+  )
+}
+
+fastq_processed_checksum <- function(
+  x = list.files(pattern = "txt.gz$")
+){
+  fastq_checksum(
+    x = x,
+    checksum_file = paste0("../", basename(getwd()), "_checksum_processed.txt")
+  )
+}
+
+fastq_processed_zip <- function(){
+  txtnames <- list.files(pattern = "txt$")
+  txtnames <- txtnames[!grepl('checksum|instrument', txtnames)]
+  void <- sapply(txtnames, function(x){
+    cat(x)
+    if(!file.exists(paste0(x, ".gz"))){
+      cat(" - zipping\n"); system(paste0('gzip ', x)); return(TRUE)
+    }; cat("\n")
+  })
+}

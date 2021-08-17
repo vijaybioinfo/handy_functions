@@ -10,14 +10,57 @@ theme_set(theme_cowplot())
 # Colour brewer expanded: https://bl.ocks.org/emeeks/8cdec64ed6daf955830fa723252a4ab3
 # Compare range between two colours: https://learnui.design/tools/data-color-picker.html
 # Viz your custom palettes: https://projects.susielu.com/viz-palette
+# plotrix::color.id("#800020") # hex2col
+# grDevices::colorRampPalette("firebrick3")(1) # col2hex
+# scales::show_col(sample(x = colors(), size = 7)) # show_colours
 
 couls_opt = list(
   red_gradient = list(
     strong = c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','#EE0000','#b30000', '#670000'),
+    strong_white = c('#fffffa', '#ffdf32', '#ff9a00', '#ff5719','#EE0000','#b30000', '#670000'),
     white = c('#fffffa', '#fff7cf', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'), # white
     divisive = c('#fff7cf', '#fcf193', '#ffdf32', '#ff9a00', '#EE0000','#b30000', '#670000'),
-    brewer = c("#ffffcc","#ffeda0","#fed976","#feb24c","#fd8d3c","#fc4e2a","#e31a1c","#bd0026","#800026"))
+    brewer = c("#ffffcc","#ffeda0","#fed976","#feb24c","#fd8d3c","#fc4e2a","#e31a1c","#bd0026","#800026")),
+  green_gradient = list(
+    brewer = c("#f7fcf5", "#e5f5e0", "#c7e9c0", "#a1d99b", "#74c476", "#41ab5d", "#238b45", "#006d2c", "#00441b"),
+    brewer_yellow = c("#ffffe5", "#f7fcb9", "#d9f0a3", "#addd8e", "#78c679", "#41ab5d", "#238443", "#006837", "#004529")),
+  purple_gradient = list(
+    brewer = c("#f7fcfd", "#e0ecf4", "#bfd3e6", "#9ebcda", "#8c96c6", "#8c6bb1", "#88419d", "#810f7c", "#4d004b"),
+    brewer_yellow = c("#ffffd9", "#edf8b1", "#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#253494", "#081d58")),
+  blue_gradient = list(
+    brewer = c("#f7fcf0", "#e0f3db", "#ccebc5", "#a8ddb5", "#7bccc4", "#4eb3d3", "#2b8cbe", "#0868ac", "#084081"))
 )
+
+plot_color_list = function(x, col_names = FALSE){
+  x = unlist(x, recursive = FALSE)
+  n <- max(sapply(x, length))
+  colorlist = lapply(x, function(y){
+    z <- y[1:n]; z[is.na(z)] <- "#FFFFFF"; z
+  })
+  names(colorlist) <- gsub("_gradient|gradient", "", names(colorlist))
+  n <- rep(n, length(colorlist))
+  nr <- length(colorlist)
+  nc <- max(n)
+  ylim <- c(0, nr)
+  oldpar <- par(mgp = c(2, 0.25, 0))
+  on.exit(par(oldpar))
+  par(mar = c(0.5, 8, 0.5, 0.5))
+  plot(1, 1, xlim = c(0, nc), ylim = ylim, type = "n", axes = FALSE,
+      bty = "n", xlab = "", ylab = "")
+  for (i in 1:nr) {
+      nj <- n[i]
+      shadi <- colorlist[[i]]
+      border_i = ifelse(shadi != "#FFFFFF", "light grey", shadi)
+      rect(xleft = 0:(nj - 1), ybottom = i - 1, xright = 1:nj,
+          ytop = i - 0.2, col = shadi, border = border_i)
+      if(isTRUE(col_names))
+        text((1:nc) - 0.5, rep(i - 0.6, nj), labels = shadi, cex = 0.5, xpd = TRUE)
+  }
+  text(rep(-0.1, nr), (1:nr) - 0.6, labels = names(colorlist), xpd = TRUE, adj = 1)
+}
+# pdf("lab_colors.pdf", width = 10, height = 7)
+# plot_color_list(couls_opt)
+# dev.off()
 
 # Packages: ggplot2, cowplot
 
@@ -239,13 +282,12 @@ custom_heatmap <- function(
   regress = c('nCount_RNA', 'percent.mt'),
   topz = NULL,
   verbose = FALSE,
-  type = c("NMF", "pheatmap"),
+  type = NULL,
   cluster_cols_override = FALSE,
   do_log = FALSE,
   return_objects = FALSE,
   ... # arguments for NMF::aheatmap or pheatmap
 ){
-  type <- match.arg(type)
   if(casefold(class(object)) == 'seurat'){
     if(verbose) cat("Seurat object\n")
     if(is.null(annoc)) annoc <- object@meta.data
@@ -285,7 +327,8 @@ custom_heatmap <- function(
     }
     use_mean <- if(isTRUE(use_mean[1])) head(colnames(annoc)[sapply(annoc, is.character)], 1) else use_mean
     if(verbose) cat("Means:", paste0(use_mean, collapse = ", "), "\n")
-    annoc$index123 <- paste0("X", do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_")))
+    # annoc$index123 <- paste0("X", do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_")))
+    annoc$index123 <- do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_"))
     means <- stats_summary_table(
       mat = object,
       rnames = rnames,
@@ -413,15 +456,26 @@ custom_heatmap <- function(
   mypalette <- colorRampPalette(colors = rev(hcouls), space = 'Lab')
   palettebreaks <- seq(from = -topz, to = topz, by = 0.1)
 
-  if(type == "NMF"){
+  if(isTRUE(grepl("NMF", type))){
     cat("Using NMF\n")
     y <- NMF::aheatmap(
-      mat_to_plot,
+      x = mat_to_plot,
       scale = 'none', Rowv = feature_order, Colv = NA,
       annCol = annoc, annColors = anncolist,
       col = mypalette(length(palettebreaks) - 1),#7)),
       ...
     )
+  }else if(isTRUE(grepl("gg", type))){
+    ddf = reshape2::melt(mat_to_plot)
+    ddf$Var1 <- factor(ddf$Var1, rev(rownames(mat_to_plot)))
+    ddf$Var2 <- factor(ddf$Var2, colnames(mat_to_plot))
+    y <- ggplot(ddf, aes(x = Var2, y = Var1)) +
+      geom_tile(aes(fill = value)) +
+      scale_fill_gradientn(colours = mypalette(length(palettebreaks) - 1)) +
+      labs(fill = NULL, x = NULL, y = NULL)
+    # if(){ # for annotation maybe look at dot_plot
+    #   ggplot(data = annoc, aes(x = L1, y = 1, fill = value)) + geom_tile() + theme_nothing()
+    # }
   }else{
     cat("Using pheatmap\n")
     source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/pheatmapCorrection.R')
@@ -563,7 +617,82 @@ plot_pct <- function(
   return(p)
 }
 
-### Aesthetic/ggplot ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+plot_axis_cross = function(
+    gp, column_names = NULL, limit = NULL, verbose = FALSE
+){
+  column_map <- gsub("~", "", as.character(gp$mapping))
+  if(length(column_map) == 0) column_map = colnames(gp$data)
+  if(verbose) cat("Mapping:", paste(column_map, collapse = ", "), "\n")
+  if(is.null(column_names)) column_names <- column_map
+  column_names <- column_names[sapply(gp$data[, column_names], is.numeric)]
+  if(verbose) cat("Using:", paste(column_names, collapse = ", "), "\n")
+  if(length(column_names) < 2) return(gp)
+  dff <- gp$data[, column_names, drop = FALSE]
+  if(all(sapply(dff, is.numeric))){
+    if(!is.numeric(limit)) lx <- min(dff[, 1], na.rm = TRUE)
+    if(!is.numeric(limit)) ly <- min(dff[, 2], na.rm = TRUE)
+    len = min(mean(range(dff[, 1]))/3, mean(range(dff[, 2]))/3)
+    if(verbose) cat("Cross:", lx, ly, ", length=", len, "\n")
+    scatter_sizes = data.frame(
+      x = c(lx, lx), xend = c(lx + len, lx),
+      y = c(ly, ly), yend = c(ly, ly + len))
+    gp <- gp + geom_segment(
+        data = scatter_sizes, mapping = aes(x=x, y=y, xend=xend, yend=yend),
+        inherit.aes = FALSE
+      ) + coord_cartesian(clip = "off")
+  }
+  gp + theme(
+    line = element_blank(),
+    axis.title.x = element_text(hjust = 0.1), axis.title.y = element_text(hjust = 0.1),
+    axis.text.x = element_blank(), axis.text.y = element_blank()
+  )
+}
+
+plot_png = function(x){
+  # conda install -c conda-forge poppler
+  # export R_LD_LIBRARY_PATH=$R_LD_LIBRARY_PATH:/home/ciro/bin/miniconda3/lib
+  # install.packages("pdftools")
+  # sudo apt-get -y install libmagick++-dev
+  # install.packages("magick")
+  # devtools::install_github("ropensci/magick")
+  img = switch(
+    EXPR = casefold(tools::file_ext(x)),
+    png = png::readPNG(x),
+    jpeg = jpeg::readJPEG(x),
+    pdf = magick::image_read_pdf(x)
+    # pdf = pdftools::pdf_render_page(x)
+  )
+  qplot(1:10, 1:10, geom="blank") +
+    annotation_custom(grid::rasterGrob(img, interpolate = TRUE),
+      xmin=-Inf, xmax=Inf, ymin=-Inf, ymax=Inf)
+}
+
+### Aesthetic ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+theme_axes <- function (
+  base_size = 11,
+  base_family = "",
+  base_line_size = base_size / 22,
+  base_rect_size = base_size / 22
+){
+  half_line <- base_size / 2
+  t <- theme(
+    line = element_line(colour = "black", size = base_line_size, linetype = 1, lineend = "butt"),
+    rect = element_rect(fill = "white",colour = "black", size = base_rect_size, linetype = 1),
+    text = element_text(
+      family = base_family, face = "plain",
+      colour = "black", size = base_size, lineheight = 0.9,
+      hjust = 0.5, vjust = 0.5, angle = 0, margin = margin(),
+      debug = FALSE
+    ),
+    axis.title.x = element_blank(), axis.title.y = element_blank(),
+    axis.text.x = element_blank(), axis.text.y = element_blank(),
+    legend.position = "none",
+    plot.title = element_blank(), plot.subtitle = element_blank(), plot.caption = element_blank(),
+    strip.text = element_blank(), strip.background = element_blank()
+  )
+  # ggplot_global$theme_all_null %+replace% t
+}
+
 rotatedAxisElementText = function(angle, position = 'x', cnter = 0.5){
   angle     = angle[1];
   position  = position[1]
@@ -577,12 +706,13 @@ rotatedAxisElementText = function(angle, position = 'x', cnter = 0.5){
   vjust = cnter*(1 + cos(rads))
   element_text(angle = angle,vjust = vjust, hjust = hjust)
 }
-grid_theme <- function(){
+
+theme_grid <- function(){
   theme_classic() + theme(
-        panel.background = element_blank(),
-        panel.grid.major = element_blank(),
-        strip.text.x = element_text(face = 'bold'),
-        strip.background = element_rect(fill = "#FFFFFF", linetype = 0))
+    panel.background = element_blank(), panel.grid.major = element_blank(),
+    strip.text.x = element_text(face = 'bold'),
+    strip.background = element_rect(fill = "#FFFFFF", linetype = 0)
+  )
 }
 
 # set legend text
@@ -596,16 +726,56 @@ SetLegendPointsGG <- function(x = 6) {
 }
 
 # nice theme
-mytheme <- ggplot2::theme_classic() +
- ggplot2::theme(
-    axis.text.x = element_text(face = "bold", hjust = 1, angle = 45),
-    axis.title.x = element_text(face = "bold"),#, colour = "#990000"),
-    axis.text.y = element_text(angle = 0, face = "bold"),
-    axis.title.y = element_text(face = "bold"),#, colour = "#990000"),
-    plot.title = element_text(face = "bold", hjust = 0.5),
-    strip.text = element_text(face = 'bold', size = 10),
+theme_highlight <- function(){
+  ggplot2::theme_classic() +
+   ggplot2::theme(
+      axis.text.x = element_text(face = "bold"),
+      axis.title.x = element_text(face = "bold"),
+      axis.text.y = element_text(angle = 0, face = "bold"),
+      axis.title.y = element_text(face = "bold"),
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      strip.text = element_text(face = 'bold'),
+      strip.background = element_rect(fill = "#FFFFFF", linetype = 1, size = 0.001)
+    )
+}
+
+# https://www.youtube.com/watch?v=UvRaNJC05Ec
+# http://www.sthda.com/english/articles/24-ggpubr-publication-ready-plots/81-ggplot2-easy-way-to-mix-multiple-graphs-on-the-same-page
+# https://www.r-bloggers.com/2020/05/vignette-generate-your-own-ggplot-theme-gallery
+# https://github.com/tidyverse/ggplot2/blob/master/R/theme-defaults.r
+# https://stackoverflow.com/questions/27689222/changing-fonts-for-graphs-in-r
+# https://rpubs.com/Koundy/71792
+theme_pub0 <- function(
+  base_size = 12,
+  base_family = "",
+  base_line_size = base_size / 22,
+  base_rect_size = base_size / 22
+){
+  half_line <- base_size / 2
+  t <- theme(
+    line = element_line(colour = "black", size = base_line_size, linetype = 1, lineend = "butt"),
+    rect = element_rect(fill = "white", colour = "black", size = base_rect_size, linetype = 1),
+    text = element_text(
+      family = base_family, face = "plain",
+      colour = "black", size = base_size, lineheight = 0.9,
+      hjust = 0.5, vjust = 0.5, angle = 0, margin = margin(),
+      debug = FALSE
+    ),
+    axis.title.x = element_text(face = "bold", size = rel(0.8)),
+    axis.title.y = element_text(face = "bold", size = rel(0.8)),
+    axis.text.x = element_text(face = "plain", size = rel(0.8)),
+    axis.text.y = element_text(face = "plain", size = rel(0.8)),
+    legend.key.width = unit(0.2, 'cm'),
+    legend.text = element_text(face = "plain", size = rel(0.6), hjust = 1),
+    legend.title = element_text(face = "plain", size = rel(0.8)),
+    plot.title = element_text(face = "bold", size = rel(1)),
+    plot.subtitle = element_text(face = "plain", size = rel(0.8)),
+    plot.caption = element_text(face = "plain", size = rel(0.6)),
+    strip.text = element_blank(),
     strip.background = element_rect(fill = "#FFFFFF", linetype = 1, size = 0.001)
   )
+  # ggplot_global$theme_all_null %+replace% t
+}
 
 # Quadrant counts
 # inspired from
@@ -686,22 +856,19 @@ stat_quadrant <- function (
   )
 }
 
+# `%>%` = dplyr::`%>%`
+# centroid = data %>% dplyr::group_by(center_by) %>%
+#   dplyr::summarize(x = type(x = x), y = type(x = y))
 StatCentroid <- ggplot2::ggproto(
   "StatCentroid", ggplot2::Stat,
   required_aes = c("x", "y"),
   compute_panel = function(
     data, scales, params, center_by = "colour", type = median
   ) {
-    `%>%` = dplyr::`%>%`
     data$center_by = data[, center_by]
-    centroid = data %>% dplyr::group_by(center_by) %>%
-      dplyr::summarize(x = type(x = x), y = type(x = y))
-    centroid
+    aggregate(cbind(x,y) ~ center_by, data = data, FUN = type)
   },
-  default_aes = ggplot2::aes(
-    x = stat(x), y = stat(x),
-    label = stat(center_by)
-  )
+  default_aes = ggplot2::aes(x = stat(x), y = stat(x), label = stat(center_by))
 )
 
 stat_centroid <- function (
@@ -789,6 +956,141 @@ scatter_contour = function(
   return(p)
 }
 
+plot_coord_radar = function (theta = "x", start = 0, direction = 1, ...) {
+  theta <- match.arg(theta, c("x", "y"))
+  r <- if (theta == "x") "y" else "x"
+  ggproto(
+    "CordRadar", CoordPolar, theta = theta, r = r, start = start,
+    direction = sign(direction),
+    is_linear = function(coord) TRUE, ...)
+}
+
+plot_radar = function(
+  data, # feature, group, value
+  enriched = TRUE,
+  range_expand = 0.5,
+  cex = 1,
+  threshold = NULL
+) {
+  if(is.matrix(data)){
+    data = as.data.frame(data)
+    data = suppressWarnings(suppressMessages(
+      reshape2::melt(cbind(data, rownames(data)))
+    ))
+  }
+  colnames(data) <- c("feature", "group", "value")
+  if(!isTRUE(enriched)){
+    data[which(data[, 3] > 0), 3] <- 0; data[, 3] <- abs(data[, 3])
+  }else{ data[which(data[, 3] < 0), 3] <- 0 }
+  if(is.numeric(data[, 2]))
+    data[, 2] <- as.character(data[, 2])
+  if(!is.factor(data[, 2]))
+    data[, 2] <- factor(data[, 2], gtools::mixedsort(unique(data[, 2])))
+
+  # Make the circle not have a gap between the extreme points on X
+  bridges <- data[data$group == levels(data[, 2])[1], ]
+  bridges$group <- NA
+  data <- rbind(data, bridges)
+
+  d0 = data; d0[is.na(d0[, 3]), 3] <- 0
+  range_0 = range_i = range(d0[, 3])
+  range_i[1] <- range_i[1]-range_expand[1]
+  if(!is.na(range_expand[2])) range_i[2] <- range_i[2]+range_expand[2]
+
+  aesy = aes_string(x = "group", y = "value", color = "feature", group = "feature")
+  groups <- setNames(1:nlevels(data[, 2]), levels(data[, 2]))
+  p <- ggplot(data = data, mapping = aesy) +
+    geom_path(color = "#BEBEBE", size = cex*1.0) +
+    geom_line(color = "#ededed", size = cex*0.5) +
+    geom_polygon(data = d0, color = "#919191", size = cex*0.1, fill = NA) +
+    geom_point(size = cex*4.5) + ylim(range_i) +
+    scale_x_discrete(expand = c(0,0), breaks = levels(data[, 2])) +
+    labs(x = NULL, y = NULL) + theme_classic() +
+    theme(
+      axis.line = element_blank(),
+      axis.text.y = element_blank(), axis.ticks = element_blank(),
+      axis.text.x = element_text(vjust = 3, size = rel(1.5)),
+      panel.border = element_blank(), # panel.border = element_rect(fill = NA)
+      panel.grid.major.x = element_line(size = rel(0.1), colour = "#dbdbdb"),
+      panel.grid.major.y = element_line(size = rel(0.1), colour = "#dbdbdb")
+    )
+  dtext <- rbind(
+    head(d0[which(d0[, 3] == range_0[1]), , drop = FALSE], 1),
+    head(d0[which(d0[, 2] == levels(d0[, 2])[1]), ], 1),
+    head(d0[which(d0[, 3] == range_0[2]), ], 1)
+  ); dtext$value_str <- ""
+  dtext[2:3, ]$value_str = paste(c("Min =", "Max ="), dtext[2:3, ]$value)
+  if(is.numeric(threshold)){
+    hline = data.frame(gr = seq(1,length(groups)+.9, by=0.1))
+    hline$value = rep(threshold, nrow(hline))
+    dtext[1, ]$value = threshold
+    dtext[1, ]$value_str = paste("Threshold =", threshold)
+    p <- p + geom_polygon( # can't be hline bc of plot_coord_radar
+      data = hline, mapping = aes(x = gr, y = value), inherit.aes = FALSE,
+      colour = "#919191", linetype = "dashed", fill = NA)
+  }else{ dtext <- dtext[-1, ] }
+  p <- p + geom_text(
+    data = dtext, mapping = aes(x=group,y=value,label=value_str),
+    nudge_y = -min(c(0.3, range_expand[1])), size = cex*2, inherit.aes = FALSE
+  )
+  p <- p + plot_coord_radar()
+  return(p)
+}
+
+# devtools::install_git('https://bitbucket.org/nicholasehamilton/ggtern')
+scatter_compare <- function(
+  data,
+  groups = NULL,
+  label = NULL # Number of features to show or a vector of features
+){
+  if(is.null(groups)) groups = head(colnames(data), 3)
+  if(!is.null(label)){
+    maxs = if(is.numeric(label)){
+      unique(unlist(lapply(groups, function(x){
+        rownames(data[head(order(data[, x]), label), ])
+      })))
+    }else{ label }
+    datatr <- data[maxs, ]
+    datatr$gene_name <- rownames(datatr)
+    # datatr$gene_name[!rownames(data) %in% maxs] <- ""
+  }
+
+  p <- if(!is.na(groups[3])){
+    fun = ggtern::ggtern # ggtern::coord_tern(expand = FALSE)
+    aesy = aes_string(x = groups[1], y = groups[2], z = groups[3])
+    fun(data = data, mapping = aesy) +
+      ggtern::stat_density_tern(geom = 'polygon',
+        aes(fill  = ..level.., alpha = ..level..)) +
+      guides(color = "none", alpha = "none") +
+      geom_point() + scale_fill_gradientn(colours = viridis::viridis(25)) +
+      theme(
+        tern.axis.arrow.show = TRUE, legend.position = "bottom",
+        plot.margin = margin(-0.5, -0.5, -0.5, -0.5, "cm"),
+        panel.background = element_rect(fill = "white", colour = NA),
+        panel.border = element_rect(fill = NA, colour = "grey95"),
+        panel.grid = element_line(colour = "grey97", size = rel(0.7)),
+        strip.background = element_rect(fill = "#FFFFFF")
+      )
+  }else{
+    scatter_contour(data, groups[1], groups[2])
+  }
+
+  if(!is.null(label)){
+    # position = position_dodge(0.9), # nudge not approved by ggtern
+    # fun_text = if(!is.na(groups[3])) ggtern::geom_text_viewport else ggplot2::geom_text
+    # if(requireNamespace("ggrepel", quietly = TRUE)) fun_text = ggrepel::geom_text_repel
+    p <- p + ggplot2::geom_text(data = datatr, mapping = aes(label = gene_name), color = 'black')
+    # p <- p + ggtern::annotate(geom  = 'text', # same as ggplot2::geom_text
+    #   x = datatr[, groups[1]], y = datatr[, groups[2]],
+    #   z = datatr[, groups[3]], label = datatr$gene_name)
+  }
+  return(p)
+}
+# set.seed(1)
+# ddf = data.frame(Ab = runif(100), An = runif(100), Or = runif(100))
+# scatter_compare(ddf)
+
+### Utilities ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 scatter_summary_df = function(
   data, features, threshold = 0, group = NULL
 ) {
@@ -797,7 +1099,8 @@ scatter_summary_df = function(
   features_stats = lapply(
     X = 1:ncol(features),
     FUN = function(i){
-      pdata_i = data[, c(features[1, i], features[2, i])]
+      z <- c(as.character(features[1, i]), as.character(features[2, i]))
+      pdata_i = data[, z]
       colnames(pdata_i) <- c("x", "y")
       lapply(
         X = setNames(nm = groups),
@@ -808,15 +1111,12 @@ scatter_summary_df = function(
             type = "percent", loc_type = "component"
           ); y[, 1] <- paste0(features[1, i], y[, 1])
           y[, 2] <- paste0(features[2, i], y[, 2]); y
-        }
-      )
-  })
-  suppressMessages(reshape2::melt(features_stats))
+      })
+    }); suppressMessages(reshape2::melt(features_stats))
 }
 
-### Utilities ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # create numeric breaks for ggplot legends
-make_breaks <- function(
+make_breaks <- function( # pretty brakes!!!
   x,
   n = 10,
   push = c(min = -0, max = 0),
@@ -836,27 +1136,28 @@ make_breaks <- function(
 }
 
 # how to fit a number of objects in a 2D dimention
-make_grid <- function(x, ncol = NULL, verbose = FALSE){
-  vecL <- if(is.numeric(x)) x else if(is.character(x)) as.numeric(x) else length(x)
-  vecL <- length(seq(vecL))
-  if(verbose) cat('Length:', vecL, '\n')
-  if (!is.null(x = ncol)) {
-    if(verbose) cat('Adjust for ncol:', ncol, '\n')
-    if (vecL == 1) ncol <- 1
-    # if (vecL > 6) ncol <- 3
-    # if (vecL > 9) ncol <- 4
-    nRow <- floor(x = vecL / ncol - 1e-5) + 1
+make_grid <- function(x, n_col = NULL, verbose = FALSE){
+  xlen <- if(length(x) > 1) length(x) else if(is.numeric(x)) x
+  if(isTRUE(xlen == 0) || is.null(xlen)) return(c(1, 1))
+  xlen <- length(seq(xlen))
+  if(verbose) cat('Length:', xlen, '\n')
+  if(xlen %in% 1) return(c(1, 1))
+  if (!is.null(x = n_col)) {
+    if(verbose) cat('Adjust for n_col:', n_col, '\n')
+    n_row <- floor(x = xlen / n_col - 1e-5) + 1
+  }else if(!sqrt(xlen) %% 1){
+    n_row <- n_col <- sqrt(xlen)
   }else{
-    if(vecL %in% 1:2) ncol <- 1 else if(!is.numeric(ncol)) ncol <- round(sqrt(vecL) + .5)
-    if(vecL == 1) nRow <- 1 else nRow <- round(vecL / ncol)
-    if(nRow * ncol < vecL) nRow <- nRow + 1
-    if(!sqrt(vecL) %% 1) nRow <- ncol <- sqrt(vecL) # if sqrt is integer
+    n_col <- round(sqrt(xlen) + .5)
+    n_row <- max(c(round(xlen / n_col), 1))
   }
-  if(verbose) cat('nRow:', nRow, '\nncol', ncol, '\n')
-  return(c(nRow, ncol, ifelse(vecL <= 2,  8, 4)))
+  if(n_row * n_col < xlen) n_row <- n_row + 1
+  if(verbose) cat('n_row:', n_row, '\nn_col', n_col, '\n')
+  return(c(n_row, n_col)) # columns increase faster than rows
 }
 
-plot_size = function(x) sapply(x, function(y) min(c(25, y * 7)) )
+plot_size = function(x, n_base = 7, n_max = 25)
+  sapply(x, function(y) min(c(n_max, y * n_base)) )
 
 make_title <- function(x){
   y <- gsub("orig|\\.", "_", casefold(x, upper = TRUE), ignore.case = TRUE)

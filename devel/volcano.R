@@ -46,6 +46,7 @@ volplot <- function(
   colnames(x) <- sub(paste0("^", pvaltype, "$"), "FDR", colnames(x))
   colnames(x) <- sub(paste0("^", lfctype, "$"), "Fold", colnames(x))
   x <- x[, !duplicated(colnames(x))]
+  lfcth_line = c(TRUE, TRUE)
   if(is.null(group)){
     if(verbose) cat("Setting groups\n")
     x["group"] <- "Not_significant"
@@ -55,7 +56,7 @@ volplot <- function(
         lfcth_line = c(FALSE, TRUE); x['Fold'] < lfcth
       }else{ lfcth_line = c(TRUE, FALSE); x['Fold'] > lfcth }
     }else{
-      lfcth_line = c(TRUE, TRUE); abs(x['Fold']) > lfcth
+      abs(x['Fold']) > lfcth
     }
     # change the grouping for the entries with significance but not a large enough Fold change
     x[which(abs(x['FDR']) < pvalth & axis_x ), "group"] <- "Significant"

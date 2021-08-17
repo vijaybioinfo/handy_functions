@@ -29,7 +29,7 @@ filters_complex <- meta_filtering <- function(
     filters <- filters_pattern(filters)
   }
 
-  # subsetting annotation first checking for a file
+  ## Checking for a file ## ----------------------------------------------------
   if(file.exists(filters[[1]][1])){
     if(verbose) cat("Filters from file", filters[[1]][1], "\n")
     filters <- c(filters, filters[[1]][1]) # separating the file from the rest of the filters
@@ -48,33 +48,38 @@ filters_complex <- meta_filtering <- function(
     if(length(filters) > 1) filters <- filters[-1]
   }
 
-  # Add gene tag
+  ## Add gene tag ## -----------------------------------------------------------
+  # Example: tag_GENE or tag_GENE_10 > GENEp and GENEn
+  # tag_CD4~tag_CD8B > CD4p_CD8Bp, CD4p_CD8Bn, CD4n_CD8Bp, CD4n_CD8Bn
   for(addgene in unique(c(cname, sapply(filters, head, 1)))){
     if(addgene %in% colnames(mdata)) next # if it's not in the annotation already
     gg <- unlist(strsplit(gsub("tag_|_[0-9]+", "", addgene), sepchar))
     if(grepl("tag", addgene) && all(gg %in% rownames(cts))){
       if(verbose) cat("Adding gene tags\n")
-      tvar <- as.numeric(gsub("tag_.*_", "", unlist(strsplit(addgene, sepchar))))
-      tvar <- ifelse(is.na(tvar), 0, tvar)
+      explevel <- as.numeric(gsub("tag_.*_", "", unlist(strsplit(addgene, sepchar))))
+      explevel <- ifelse(is.na(explevel), 0, explevel)
       tags_df <- features_add_tag(
-        lgenes = gg,
-        annot = mdata,
-        mat = cts,
+        gg, mdata, cts,
         thresh = tvar, tag = c('tag', 'p', 'n'),
         verbose = verbose
       )
-      colname <- addgene
-      tags_df[, colname] <- apply(tags_df, 1, paste, collapse = "")
-      print(reshape2::melt(table(tags_df[, colname])))
+      tags_df[, addgene] <- apply(tags_df, 1, paste, collapse = "_")
+      print(reshape2::melt(table(tags_df[, addgene])))
       mdata <- cbind(tags_df, mdata); headmat(mdata)
     }
   }
-  allcnames <- unique(c(cname, sapply(filters, head, 1)))
-  allcnames <- allcnames[grepl(sepchar, allcnames)]
-  allcnames <- allcnames[!allcnames %in% colnames(mdata)]
-  if(verbose) cat("Combining columns\n")
-  if(length(allcnames) > 0){
-    for(cname_i in allcnames){
+
+  ## Combined columns ## -------------------------------------------------------
+  # Example: columnA: elementA1, elementA2
+  # columnB: elementB5, elementB8
+  # columnA~columnB, elementA1_elementB5
+  # disease~stim, Mild_Unstim (if you are comparing Mild_Unstim vs Sever_Unstim)
+  allcolumns <- unique(c(cname, sapply(filters, head, 1)))
+  allcolumns <- allcolumns[grepl(sepchar, allcolumns)]
+  allcolumns <- allcolumns[!allcolumns %in% colnames(mdata)]
+  if(length(allcolumns) > 0){
+    if(verbose) cat("Combining columns\n")
+    for(cname_i in allcolumns){
       addeds <- unlist(strsplit(cname_i, sepchar))
       if(verbose) cat(" -", addeds, "\n")
       mdata$combn <- apply(mdata[, addeds, drop = FALSE], 1, paste, collapse = "_")
@@ -82,10 +87,10 @@ filters_complex <- meta_filtering <- function(
     }
   }
 
-  # now if there's further filtering
+  ## Based on a list ## --------------------------------------------------------
   # watch out for 'cname' column samples/cells by table(cname, column_filtering_by)
   if(verbose) cat("Filtering:")
-  did_filter <- nrow(mdata); filters_rec <- filters
+  did_filter <- nrow(mdata); filters0 <- filters
   filters_found <- sapply(filters, head, 1) %in% colnames(mdata)
   if(any(filters_found)){
     if(any(!grepl("^expr", sapply(filters[!filters_found], head, 1)))){
@@ -111,35 +116,40 @@ filters_complex <- meta_filtering <- function(
     if(exists('filterssuffix')){
       filters <- paste0(filterssuffix, filters); rm(filterssuffix)
     }
-  }; filters <- filters_rec
+  }; filters <- filters0
 
   tvar <- sapply(filters, function(x) any(grepl("^expr", x)) )
   if(any(tvar)){
     if(verbose) cat("- based on an expression\n")
     filters <- unlist(filters[tvar])
-    myfilters <- gsub("^expr[A-z]{,7}", "", gsub("^expr[A-z]{,7} ", "", filters))
-    myfilters <- filters[filters != ""];
     myfilters <- filters[!grepl("^expr", filters)];
     for(myfilter in myfilters){
       sset <- paste0("cellsf <- rownames(subset(mdata, subset = ", myfilter, "))")
       if(verbose) cat("Expression:", sset, "\n")
-      eval(expr = parse(text = sset))
-      mdata <- mdata[cellsf, ]
+      eval(expr = parse(text = sset)); mdata <- mdata[cellsf, ]
     }
   }
   tvar <- cname %in% colnames(mdata);
-  if(sum(!tvar) > 0) cat("Column name(s) not found: ", show_commas(cname[!tvar]))
-  if(did_filter == nrow(mdata) && verbose) cat("- no filter applied\n")
+  if(sum(!tvar) > 0) cat("Column name(s) not found: ", show_commas(cname[!tvar]), "\n")
+  if(did_filter == nrow(mdata) && verbose){
+    cat("- no filter applied\n"); filters = ""
+  }
   return(list(annotation = mdata, filter = filters))
 }
 
 # transform string/vector/list to list for subset
+# column~element
+# column:element;column2:element3
+# Column == 'Element1'
+# "list(c('column', 'element'), c('column2', 'element3'))"
+# "list(c('column', '-element'), c('column2', 'element3'))"
+# "list(c('RNA_snn_res.0.6', '4', '6'), c('orig.celltype', 'CD4'))"
+# "expr: RNA_snn_res.0.6 %in% c('4', '6') & orig.celltype == 'CD4'"
 filters_pattern <- translist <- function(pat){
   if(is.null(pat)) return(character(0))
   if(grepl(":|;", pat[[1]][1])){
     pat <- strsplit(unlist(strsplit(pat, ";")), ":")
     pat <- lapply(pat, function(x) unlist(strsplit(gsub(x, pattern = " ", replacement = ""), ",")) )
-    # return(pat)
   }
   if(sum(grepl("^list", pat))) pat <- eval(expr = parse(text = pat))
   if(!is.list(pat)) pat <- list(pat)
@@ -174,7 +184,6 @@ filters_subset_df <- getsubset <- function(
   if(!is.null(x$op)){
     op = x[['op']]; x <- x[names(x) != "op"]
   }
-  # if(is.null(x)) x <- c(colnames(df)[1], unique(df[, 1]))
   if(length(x) == 1 && class(x) != 'list') x <- c(x, unique(df[, 1]))
   x <- x[!is.na(x)]
   if(class(x) != 'list') x <- list(x)
@@ -218,6 +227,7 @@ filters_subset_df <- getsubset <- function(
 }
 
 filters_summary <- summary_subset <- function(x){
+  if(isTRUE(x == "")) return("")
   tvar <- sapply(x, function(x) paste0(paste0(x[-1], collapse = "AND"), "_from_", x[1]) )
   if(length(tvar) > 0) paste0(tvar, collapse = "_and_") else ""
 }
@@ -238,8 +248,6 @@ filters_vector = function(
   if(verbose){ cat("Excluding:\n"); print(format(unname(obs_ex), justify = "centre")) }
   obs_in = obs_in[!obs_in %in% obs_ex]; names(obs_in) <- obs_in
   for(i in names(rename)) names(obs_in) <- gsub(i, rename[[i]], names(obs_in))
-  # tvar <- !grepl("RNA", names(obs_in))
-  # obs_in[tvar] <- stringr::str_to_sentence(gsub("_", " ", obs_in[tvar]))
   if(verbose){ cat("Final names:\n"); print(format(obs_in, justify = "centre")) }
   return(obs_in)
 }
@@ -354,6 +362,7 @@ features_add_tag <- add_gene_tag <- function(
 features_find = function(
   features,
   universe,
+  thesarus = TRUE,
   verbose = FALSE
 ) {
   features_f <- features[file.exists(features)]
@@ -510,211 +519,7 @@ sample_even <- sample_grp <- function(
   scells
 }
 
-### Figure configuration ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-fig_config_template = list(
-  name = "figure_1A",
-  metadataf = "/path/to/file{.csv,.rdata,.tsv}",
-  edataf = "none", # optional in case metadataf is an object containing this data
-  sample_filter = NULL,
-  features = NULL,
-  type = "violin|dotplot|etc",
-  axis_x = list(name = "column", order = c("group1", "group2")),
-  axis_y = 'Label',
-  facet = NULL,
-  transf = NULL, # log2, log2cpm
-  individually = TRUE, # if you want to plot each feature
-  ncol = 2, size = c(5, 5)
-)
-fig_config_check <- function(config, template = fig_config_template){
-  config_names <- names(fig_config_template)
-  config_names <- config_names[!config_names %in% names(config)]
-  for(config_name in config_names){
-    config[[config_name]] <- NULL
-  }
-  if(!is.list(config$axis_x)) config$axis_x <- list(name = config$axis_x)
-  return(config)
-}
-fig_replace <- function(config, replacement){
-  for(i in 1:length(replacement)){
-    config[[names(replacement)[i]]] <- replacement[[i]]
-  }
-  return(config)
-}
-fig_features <- function(config, features, verbose = TRUE){
-  if(!is.null(config$features)) config <- list(config)
-  one_config <- length(config) == 1
-  if(verbose) cat(length(config), "configuration(s)\n")
-  config <- lapply(X = config, FUN = function(x){
-    cat(x$name, "\n")
-    x$features <- show_found(x = x$features, features, verbose = verbose)
-    cat("\n\n")
-    x
-  })
-  if(one_config) config[[1]] else config
-}
-fig_set_from_object <- function(object){
-  config = list()
-  config$metadataf = config$metadatafbk = "same"
-  config$edataf = config$edatafbk = "same"
-  if(casefold(class(object))[1] == "seurat"){
-    config$metadata = object@meta.data
-    config$edata = object@assays$RNA@data
-    config$odata = object
-  }
-  config
-}
-
-fig_set_data <- function(
-  config,
-  keep_object = TRUE, # takes too much space
-  verbose = TRUE
-){
-  # Digesting
-  config <- fig_config_check(config)
-  config$edataf <- if(is.null(config$edataf)) "none" else config$edataf
-  config$edatafbk <- if(is.null(config$edatafbk)) "none" else config$edatafbk
-  config$metadatafbk <- if(is.null(config$metadatafbk)) "file_name" else config$metadatafbk
-
-  if(verbose) cat("# Fetching data # ------------------------------------------------------------\n")
-  config$metadata <- if(isTRUE(config$metadataf != config$metadatafbk)){
-    if(verbose) cat("Loading [meta]data\n", config$metadataf, "\n")
-    readfile(config$metadataf, row.names = 1, stringsAsFactors = FALSE, verbose = verbose)
-  }else{ config$metadata }
-  config$edata <- if(isTRUE(config$edataf != config$edatafbk)){
-    if(verbose) cat("Loading features\n", config$edataf, "\n")
-    readfile(config$edataf)
-  }else{ config$edata }
-
-  myobject <- casefold(sapply(config, class))
-  config$odata <- if(any(myobject %in% "seurat")){
-    config[[which(myobject %in% "seurat")[1]]]
-  }
-
-  if(!is.null(config$odata)){ # Seurat
-    if(verbose) cat("Using", class(config$odata), "object\n")
-    tvar <- as.numeric(gsub("(..).*", "\\1", config$odata@version))
-    if(tvar < 3) config$odata <- suppressMessages(UpdateSeuratObject(config$odata))
-    if(is.null(config$metadata) || !is.data.frame(config$metadata)) config$metadata <- config$odata@meta.data
-    tvar <- is.null(config$edata) || length(dim(config$edata)) != 2 || config$edataf == "none"
-    if(tvar) config$edata <- config$odata@assays$RNA@data
-  }
-  config$metadatafbk <- config$metadataf
-  config$edatafbk <- config$edataf
-
-  ## Operations
-  if(verbose){
-    tvar <- unique(c(head(1:ncol(config$metadata)), tail(1:ncol(config$metadata))))
-    cat("Metadata\n"); str(config$metadata[, tvar])
-    cat("Features data\n"); str(config$edata)
-    cat("Config\n"); str(config, max.level = 1)
-  }
-
-  # Check it it'll be a folder or just a prefix # ------------------------------
-  config$name <- dircheck(config$name)
-  if(verbose) cat(config$name, "\n")
-  rownames(config$edata) <- features_parse_ensembl(rownames(config$edata))
-  myfeatures <- if(!is.null(config$features)) features_parse_ensembl(config$features)
-  if(verbose) cat("# Filtering features and agents (samples/cells) # ----------------------------\n")
-  myfeatures <- show_found(myfeatures, rownames(config$edata), v = verbose)
-  # colnames(filters_complex(
-  #   mdata = t(config$edata),
-  #   filters = myfeatures,
-  #   verbose = verbose
-  # )$annotation)
-  # It can also add a new category based on feature levels
-  tvar <- if(is.null(config$axis_x$name)){
-    unique(unlist(sapply(config$axis_x, function(x) x$name )))
-  }else{ config$axis_x$name }
-  tvar <- filters_complex(
-    mdata = config$metadata,
-    filters = config$sample_filter,
-    cname = tvar,
-    cts = config$edata,
-    verbose = verbose
-  )
-  ssamples <- rownames(tvar$annotation)
-  edata_ss <- if(!is.null(config$transf)){
-    if(verbose) cat("# Applying transformations # -------------------------------------------------\n")
-    tvar <- c(gsub("log[0-9]{,1}", "", config$transf), gsub("(log[0-9]{,1}).*", "\\1", config$transf))
-    edata_ss <- count_transformation(
-      cts = config$edata[rownames(config$edata) %in% myfeatures, colnames(config$edata) %in% ssamples],
-      transf = tvar[1], verbose = verbose
-    )
-    count_transformation(cts = edata_ss[[1]][myfeatures, ], transf = tvar[2], verbose = verbose)[[1]]
-  }else{ config$edata[rownames(config$edata) %in% myfeatures, colnames(config$edata) %in% ssamples] }
-  if(verbose) cat("# Sorting the identities # ---------------------------------------------------\n")
-  ddf <- config$metadata[ssamples, ]
-  if(length(myfeatures) < (nrow(config$edata) * .3)){
-    if(verbose) cat("# Adding features to pdata # -------------------------------------------------\n")
-    tvar <- if(is.null(dim(edata_ss))) t(t(edata_ss)) else t(as.matrix(edata_ss))[, myfeatures]
-    colnames(tvar) <- myfeatures
-    ddf <- cbind(ddf, tvar[ssamples, , drop = FALSE])
-  }
-  ddf <- fig_set_identities(mdata = ddf, idents = config$axis_x, verbose = verbose)
-
-  config$pdata = ddf
-  config$samples = ssamples
-  config$features = myfeatures
-  if(!keep_object) config <- config[!names(config) %in% "odata"]
-
-  return(config)
-}
-
-# idents = list(
-#   Identity = list(
-#     name = "column(s)",
-#     identnames = c(old_name = "new_name"),
-#     order = "factor order"
-#   )
-# )
-fig_set_identities <- function(
-  mdata,
-  idents = NULL,
-  verbose = FALSE
-){
-  if(is.null(idents)){
-    mdata$Identity = factor(rep("Data", nrow(mdata))); return(mdata)
-  }; if(is.character(idents)) idents = lapply(idents, function(x) list(name = x) )
-  idents <- if(is.null(idents$name)) idents else list(idents)
-  if(is.null(names(idents))){
-    new_cnames <- paste0("Identity", c("", 1:20));
-    tvar <- new_cnames %in% colnames(mdata)
-    if(sum(tvar)) warning(show_commas(new_cnames[tvar]), " exists in data")
-    names(idents) <- new_cnames[1:length(idents)]
-  }
-  mdata$Identity <- NULL # eliminating Identity column
-  for(i in names(idents)){
-    if(verbose) cat("-- Column(s):", show_commas(idents[[i]]$name), "\n")
-    tvar <- idents[[i]]$name %in% colnames(mdata)
-    if(any(!tvar)) stop("Column(s) missing: ", show_commas(idents[[i]]$name[!tvar]))
-    mdata$tmp <- ident_combine(mdata, idents[[i]]$name, "_")
-    # mdata$tmp <- do.call(paste, c(remove.factors(mdata[, idents[[i]]$name, drop = FALSE]), sep = "_"))
-    mdata$tmp <- if(!is.null(idents[[i]]$identnames)){
-      if(verbose) cat("Replacing identities\n")
-      factor(idents[[i]]$identnames[as.character(mdata$tmp)],
-        levels = unique(unname(idents[[i]]$identnames)))
-    }else{ mdata$tmp }
-    mdata$tmp <- if("REST" %in% idents[[i]]$order){
-      tvar <- as.character(mdata$tmp)
-      ifelse(!tvar %in% idents[[i]]$order, "REST", tvar)
-    }else{ mdata$tmp }
-    tvar <- any(as.character(mdata$tmp) %in% idents[[i]]$order)
-    mdata$tmp <- if(tvar && !is.null(idents[[i]]$order)){
-      if(verbose) cat("Ordering identities\n")
-      factor(mdata$tmp, idents[[i]]$order)
-    }else{ factormix(mdata$tmp) }
-    if(verbose) cat("Order:", show_commas(levels(mdata$tmp)), "\n")
-    colnames(mdata) <- gsub("^tmp$", i, colnames(mdata))
-  }
-  return(mdata)
-}
-
 ## Utilities
-factormix <- function(x){
-  if(!is.character(x)) return(x)
-  y <- as.character(x)
-  factor(y, levels = gtools::mixedsort(unique(y)))
-}
 remove.factors <- function (df) {
   for (varnum in 1:length(df)) {
     if ("factor" %in% class(df[, varnum])) {
@@ -723,6 +528,7 @@ remove.factors <- function (df) {
   }
   return(df)
 }
+
 joindf <- function(
   x,
   y,
@@ -757,6 +563,7 @@ joindf <- function(
   }
   z
 }
+
 show_commas <- function(x, hn = 3){
   tvar <- length(x)
   if(tvar > 1){
@@ -769,4 +576,5 @@ show_commas <- function(x, hn = 3){
   }
   return(tmp)
 }
+
 addspaces <- function(x, m) paste0(x, paste0(rep(' ', m-nchar(x)), collapse = ''))

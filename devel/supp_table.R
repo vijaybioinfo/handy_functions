@@ -5,7 +5,7 @@ suppressPackageStartupMessages({
 })
 
 ## create and add a style to the column headers
-body_style <- function(format_type){
+.body_style <- function(format_type){
   createStyle(
     fontSize = 12, fontColour = "#000000",
     numFmt = format_type,
@@ -14,7 +14,7 @@ body_style <- function(format_type){
     halign = "center", valign = "center"
   )
 }
-body_section_style <- function(side = "right"){
+.body_section_style <- function(side = "right"){
   createStyle(
     fontSize = 12, fontColour = "#000000",
     numFmt = "GENERAL",
@@ -23,7 +23,7 @@ body_section_style <- function(side = "right"){
     halign = "center", valign = "center"
   )
 }
-feature_style <- function(fill = "#D1D1D1"){
+.feature_style <- function(fill = "#D1D1D1"){
   createStyle(
     fontSize = 12, fontColour = "#000000",
     numFmt = "TEXT",
@@ -33,20 +33,40 @@ feature_style <- function(fill = "#D1D1D1"){
     textDecoration = "italic"
   )
 }
-caption_style <- createStyle(
+.caption_style = createStyle(
   fontName = "Arial", fontSize = 12, fontColour = "#000000", numFmt = "TEXT",
   valign = "center", textDecoration = "bold"
 )
-header_style <- function(fill = "#BFBFBF"){
+.header_style <- function(fill = "#BFBFBF"){
   createStyle(
     fontSize = 12, fontColour = "#000000",
     numFmt = "TEXT",
     border = "TopBottomLeftRight", borderColour = "#000000", borderStyle = "thick",
     fgFill = fill,
     halign = "center", valign = "center",
-    textDecoration = "bold",
+    wrapText = TRUE, textDecoration = "bold",
     locked = FALSE
   )
+}
+
+.body_style_fun = function(
+  wfile, formats, sheet = st1$sheet_names[1],
+  row_start = 1, length_i = 0, color_header = NULL, verbose = FALSE
+) {
+  for(i in formats){
+    if(verbose > 1) cat(i$format, "\n")
+    addStyle(wb = wfile, sheet = sheet,
+      style = .body_style(format_type = i$format),
+      rows = row_start:(length_i+row_start),
+      cols = i$cols, gridExpand = TRUE)
+    if(!is.null(color_header)){
+      if(verbose > 1) cat("Header style\n")
+      if(is.null(i$start)) i$start = row_start
+      addStyle(
+        wb = wfile, sheet = sheet, style = .header_style(fill = color_header),
+        rows = i$start:row_start, cols = i$cols, gridExpand = TRUE)
+    }
+  }; return(wfile)
 }
 
 # sinew::makeOxygen(supp_table)
@@ -84,7 +104,8 @@ header_style <- function(fill = "#BFBFBF"){
 #' @references
 #' @seealso
 #'
-#' @importFrom openxlsx createWorkbook addWorksheet writeData addStyle setColWidths setRowHeights saveWorkbook
+#' @importFrom openxlsx createWorkbook addWorksheet writeData addStyle
+#' setColWidths setRowHeights saveWorkbook
 #'
 #' @examples
 #' \dontrun{
@@ -127,6 +148,7 @@ supp_table <- function(
   rename_columns = TRUE,
   round_num = 2,
   body_start = 4,
+  body_start_n = 18,
   verbose = TRUE
 ){
 
@@ -137,22 +159,22 @@ supp_table <- function(
   }
 
   if(!is.list(mytables) || is.data.frame(mytables)) mytables <- list(mytables)
-  if(is.null(names(mytables)))
+  if(is.null(names(mytables))) # make them named
     names(mytables) <- paste0("Table ", 1:length(mytables))
   names(mytables) <- make.unique(names(mytables))
   if(verbose > 1) str(mytables)
 
-  if(is.null(headers)){
+  if(is.null(headers)){ # create headers
     headers <- unlist(lapply(unname(mytables), function(x) lapply(x, class) ))
     headers <- headers[!duplicated(names(headers))]
     headers <- ifelse(headers == "numeric", "NUMBER", "GENERAL")
     headers[headers %in% c("character", "factor")] <- "TEXT"
-  }
+  } # it must be a list
   if(!is.list(headers)) headers <- list(none = headers)
-  names(headers)[names(headers) == ""] <- "none"
-  colnamestype <- unlist(headers, use.names = FALSE)
+  names(headers)[names(headers) == ""] <- "none" # make sure all have a name
+  colnamestype <- unlist(headers, use.names = FALSE) # gather type instruction
   names(colnamestype) <- unlist(sapply(headers, names), use.names = FALSE)
-  if(any(names(colnamestype) == ""))
+  if(any(names(colnamestype) == "")) # See ?openxlsx::createStyle
     stop("Format instruction (headers) without column pattern")
 
   for(tname in names(mytables)){
@@ -200,16 +222,17 @@ supp_table <- function(
           y <- sapply(strsplit(x = x, split = "_|\\."), c)
           # check which names are different across columns
           if(is.null(dim(y))) return(x)
-          tvar <- apply(y, 1, function(z) length(unique(z)) ) == length(x)
-          if(sum(tvar) == 0)
-            tvar <- apply(y, 1, function(z) length(unique(z)) ) != length(x)
+          tmp <- apply(y, 1, function(z) length(unique(z)) )
+          tvar <- tmp == length(x) & tmp != 1 # if none will be taken
+          if(sum(tvar) == 0) tvar <- tmp != length(x) & tmp != 1
           apply(y[tvar, , drop = FALSE], 2, function(z) paste0(z, collapse = " ") )
         })))
-      }else{
+      }else{ # or using a list: list(c('pat1', ''), c('pat2', 'rep2'))
         if(!is.list(tvar)) rename_columns <- list(rename_columns)
         taken_new <- colnames(ddf)
         for(i in 1:length(rename_columns)){
           tvar <- ifelse(is.na(rename_columns[[i]][2]), "", rename_columns[[i]][2])
+          if(verbose > 1) cat(rename_columns[[i]][1], ">", tvar, "\n")
           taken_new <- gsub(rename_columns[[i]][1], tvar, taken_new)
         }; taken_new
       }; # taken_new <- make.unique(taken_new)
@@ -219,8 +242,7 @@ supp_table <- function(
     tabname = gsub(".*~", "", tname)
     if(verbose) cat("Tab name:", tabname, "\n")
     addWorksheet(wb = workfile, sheetName = tabname)
-    writeData(
-      wb = workfile, sheet = tabname,
+    writeData(wb = workfile, sheet = tabname,
       x = paste(title_name, gsub("~.*", "", tname)))
     heads <- sapply(headers2write, length);
     heads <- rep(names(heads), heads)
@@ -234,8 +256,7 @@ supp_table <- function(
         cat(" - ", heads[headcols[1]], ": ", min(headcols),
         " to ", max(headcols), "\n", sep = "")
       }
-      writeData(
-        wb = workfile, sheet = tabname, x = headname,
+      writeData(wb = workfile, sheet = tabname, x = headname,
         startCol = min(headcols), startRow = header_group)
       mergeCells(wb = workfile, sheet = tabname,
         cols = headcols, rows = header_group)
@@ -254,47 +275,38 @@ supp_table <- function(
     }else if(isTRUE(highlight_features)) 1 else highlight_features
     if(verbose) cat(" - title/caption\n")
     addStyle(wb = workfile, sheet = tabname,
-      style = caption_style, rows = 1, cols = 1)
+      style = .caption_style, rows = 1, cols = 1)
     if(verbose) cat(" - headers\n")
     for(taken in taken_cols){
-      if(verbose > 1) cat("  *", taken, "> ")
+      if(verbose > 1) cat("  * '", taken, "' > ", sep = "")
       tvar <- which(sapply(headers2write, function(x) any(grepl(taken, x)) ))
-      if(length(tvar) > 1){ print(tvar); print(headers2write)}
-      tvar <- names(which(sapply(names(headers[[tvar]]), grepl, taken)))
-      # tvar <- which(sapply(names(colnamestype), grepl, taken))
-      # myformat <- colnamestype[[tvar]]
-      myformat <- colnamestype[[which(names(colnamestype) %in% tvar)]]
+      if(length(tvar) > 1){ cat("\n"); print(tvar); print(headers2write) }
+      ctype <- names(which(sapply(names(headers[[tvar]]), grepl, taken)))
       this_header = which(taken_cols %in% taken)
-      if(verbose > 1) cat(myformat, "\n")
-      addStyle(
-        wb = workfile, sheet = tabname,
-        style = body_style(format_type = myformat),
-        rows = body_start_i:(nrow(ddf)+body_start_i),
-        cols = this_header, gridExpand = TRUE
-      ); tvar <- this_header %in% hfeatures && heads[this_header] == "none"
-      tvar <- if(tvar) body_start_i else header_group
-      addStyle(
-        wb = workfile, sheet = tabname, style = header_style(fill = color_header),
-        rows = tvar:body_start_i, cols = this_header, gridExpand = TRUE
+      start_log <- this_header %in% hfeatures && heads[this_header] == "none"
+      formats = list(
+        format = colnamestype[[which(names(colnamestype) %in% ctype)]],
+        start = if(start_log) body_start_i else header_group, cols = this_header
       )
+      workfile = .body_style_fun(wfile = workfile, sheet = tabname,
+        row_start = body_start_i, length_i = nrow(ddf),
+        formats = list(formats), color_header = color_header, verbose = verbose)
     }; if(verbose) cat(" - body by section\n")
     for(headname in heads){
       addStyle(
-        wb = workfile, sheet = tabname, style = body_section_style(),
+        wb = workfile, sheet = tabname, style = .body_section_style(),
         rows = (body_start_i+1):(nrow(ddf)+body_start_i),
         cols = max(which(heads == headname)),
-        gridExpand = TRUE, stack = TRUE
-      )
+        gridExpand = TRUE, stack = TRUE)
     }; if(verbose) cat(" - body bottom\n")
     addStyle(
-      wb = workfile, sheet = tabname, style = body_section_style(side = "bottom"),
+      wb = workfile, sheet = tabname, style = .body_section_style(side = "bottom"),
       rows = (nrow(ddf)+body_start_i), cols = 1:length(taken_cols),
-      gridExpand = TRUE, stack = TRUE
-    )
+      gridExpand = TRUE, stack = TRUE)
     if(is.numeric(hfeatures)){
       if(verbose) cat(" - features (first column's rows)\n")
       addStyle(
-        wb = workfile, sheet = tabname, style = feature_style(fill = color_features),
+        wb = workfile, sheet = tabname, style = .feature_style(fill = color_features),
         rows = body_start_i:(nrow(ddf)+body_start_i), cols = hfeatures,
         gridExpand = TRUE, stack = TRUE
       )
@@ -304,7 +316,7 @@ supp_table <- function(
     setColWidths(wb = workfile, sheet = tabname, cols = 1:ncol(ddf), widths = 16)
     if(any(!heads == "none"))
       setRowHeights(wb = workfile, sheet = tabname, rows = header_group, heights = 36)
-    setRowHeights(wb = workfile, sheet = tabname, rows = body_start_i, heights = 18)
+    setRowHeights(wb = workfile, sheet = tabname, rows = body_start_i, heights = body_start_n)
   }
   if(!is.null(filename)){
     fname <- paste0(filename, ifelse(grepl("xlsx$", filename), "", ".xlsx"))

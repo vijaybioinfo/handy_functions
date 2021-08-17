@@ -14,7 +14,8 @@ clean_feature_list <- function(
   groups = NULL,
   filterby = 'p~0', # Moment~[value] (default is p~0) as indicated in `stats_summary_table`. You can include the group name to filter by, p~0~group1.
   return_stats = FALSE,
-  verbose = FALSE
+  verbose = FALSE,
+  ...
 ){
   if(verbose) cat("\n")
   filterby <- unlist(strsplit(x = filterby, split = "~"))
@@ -55,7 +56,8 @@ signature_scoring <- function(
   reductions = list(pca = c('PC_1', 'PC_2'), tsne = c('tSNE_1', 'tSNE_2'), umap = c('UMAP_1', 'UMAP_2')),
   couls = c("#fffffa", "#fffeee", "#ffe080", "#ffc100", "#ff0000", "#EE0000", "#a10000", "#670000"),
   violins_color = "mean",
-  verbose = FALSE
+  verbose = FALSE,
+  ...
 ){
   str_safe_remove <- function(x, word = "random123") gsub("_{1,}", "_", gsub(word, "", x))
 
@@ -128,7 +130,6 @@ signature_scoring <- function(
     subtitl <- paste0(paste0(names(tvar), ": ", unname(tvar)), collapse = "; ")
 
     if(verbose) cat(" # heatmap\n")
-    graphics.off()
     fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring$name)), '_heatmap.pdf')
     if(!is.file.finished(fname)){
       pdf(fname, width = 10, height = 12, onefile = FALSE);
@@ -147,18 +148,18 @@ signature_scoring <- function(
       ))
       graphics.off()
     }
-    for(redu in names(reductions)){
-      if(verbose) cat(" #", redu, "\n")
-      fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring$name)), '_', redu, '.pdf')
+    for(i in names(reductions)){
+      if(verbose) cat(" #", i, "\n")
+      fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring$name)), '_', i, '.pdf')
       if(is.file.finished(fname)) next
       p <- lapply(names(scoring[-1]), function(x){
-        aesy <- aes_string(x = reductions[[redu]][1], y = reductions[[redu]][2], color = x)
+        aesy <- aes_string(x = reductions[[i]][1], y = reductions[[i]][2], color = x)
         ggplot(data = ddfplot, mapping = aesy) +
         geom_point(size = 0.1) + scale_color_gradientn(colours = couls) +
         labs(colour = NULL, title = make_title(x))
       })
-      tvar <- make_grid(length(p)) # t o determine when it's more
-      pdf(fname, width = tvar[1]*tvar[3], height = tvar[2]*tvar[3]);
+      tvar <- plot_size(make_grid(length(p))) # t o determine when it's more
+      pdf(fname, width = tvar[2], height = tvar[1]);
       print(cowplot::plot_grid(plotlist = p)); graphics.off()
     }
     for(confy in confounders){
@@ -175,7 +176,7 @@ signature_scoring <- function(
         xax = confy,
         yax = names(scoring[-1]),
         colour_by = violins_color
-      ) + RotatedAxis()
+      ) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
       pdf(fname, width = 12, height = 8);
       print(p)
       graphics.off()

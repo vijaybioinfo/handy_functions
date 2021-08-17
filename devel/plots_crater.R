@@ -37,11 +37,11 @@
 # ' addinfo <- crater_plot(tests_list = c(comp1 = '/path1', comp2 = '/path2'))
 #'
 
-source("https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/filters.R")
+source("/home/ciro/scripts/handy_functions/devel/filters.R")
 # filters_subset_df
-source("https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/utilities.R")
+source("/home/ciro/scripts/handy_functions/devel/utilities.R")
 # show_commas, features_parse_ensembl, bordering, summ_tables
-source("https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/plots.R")
+source("/home/ciro/scripts/handy_functions/devel/plots.R")
 # make_breaks, make_title, plot_blank
 
 crater_plot <- function(
@@ -64,6 +64,8 @@ crater_plot <- function(
   outputname = "./",
   return_out = FALSE,
   plot_squared = NULL,
+  limits_col = NULL,
+  limits_size = NULL,
   plot_interactive = FALSE,
   couls = c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','red2','#b30000', '#670000'),
   verbose = FALSE
@@ -119,8 +121,10 @@ crater_plot <- function(
 
   allgenes <- intersect(rownames(fstat[[1]]), rownames(fstat[[2]]))
   tvar <- intersect(feature_subset, allgenes)
-  if(length(tvar)){ if(verbose) cat("Taking", length(tvar), "of", length(allgenes), "features\n"); allgenes <- tvar }
-  # Get the Fold Changes and P-values
+  if(length(tvar)){
+    if(verbose) cat("Taking", length(tvar), "of", length(allgenes), "features\n");
+    allgenes <- tvar
+  } # Get the Fold Changes and P-values
   if(verbose) cat("Getting LFCs and P-values from intersecting genes\n")
   fstat <- lapply(fstat, function(x){
     nas <- list(pv = is.na(x[, pv]), lfc = is.na(x[, lfc]))
@@ -135,11 +139,16 @@ crater_plot <- function(
   myfcs <- lapply(fstat, "[", c(lfc, pv))
   myfcs <- cbind(myfcs[[1]], myfcs[[2]]);
   colnames(myfcs) <- paste0(rep(names(fstat), each = 2), ".", names(myfcs))
-  mydatafc <- data.frame(myfcs, stringsAsFactors = FALSE, row.names = rownames(fstat[[1]]))
+  mydatafc <- data.frame(myfcs,
+    stringsAsFactors = FALSE, row.names = rownames(fstat[[1]]))
   names(mydatafc) <- gsub(paste0("\\.", lfc), "", names(myfcs))
   mydatafc <- mydatafc[, c(names(fstat), grep(pv, names(mydatafc), value = TRUE))]
-  mydatafc$min_padj <- apply(mydatafc[, grep(paste0("\\.", pv, "$"), names(mydatafc))], 1, min, na.rm = TRUE)
-  mydatafc$min_fc <- apply(mydatafc[, grep(paste0("\\.", lfc, "$"), names(mydatafc))], 1, min, na.rm = TRUE)
+  mydatafc$min_padj <- apply(
+    X = mydatafc[, grep(paste0("\\.", pv, "$"), names(mydatafc))],
+    MARGIN = 1, min, na.rm = TRUE)
+  mydatafc$min_fc <- apply(
+    X = mydatafc[, grep(paste0("\\.", lfc, "$"), names(mydatafc))],
+    MARGIN = 1, min, na.rm = TRUE)
   if(verbose) print(head(mydatafc))
   mydatafc <- mydatafc[complete.cases(mydatafc), ]
   mydatafc <- mydatafc[intersect(rownames(mydatafc), rownames(edata)), ]
@@ -149,7 +158,7 @@ crater_plot <- function(
   thesecells <- if(!is.null(annot)) rownames(annot) else colnames(edata)
   if(!is.null(sample_filter) && !is.null(annot)){
     if(verbose) cat("Filtering samples\n")
-    thesecells <- filters_subset_df(sample_filter, annot, v = TRUE)
+    thesecells <- filters_subset_df(sample_filter, annot, v = verbose)
     annot <- annot[thesecells, ]
   }
   thesecells <- intersect(thesecells, colnames(edata))
@@ -162,10 +171,11 @@ crater_plot <- function(
     myfilter <- gene_filter[[i]]
     express <- paste0("tvar <- mydatafc[, '", i, "']", myfilter[[1]])
     eval(expr = parse(text = express))
-    if(verbose) cat("Pass", i, myfilter[[1]], "filter:", sum(tvar), "- set to", as.numeric(myfilter[[2]]), "\n")
+    tmp <- paste("Pass", i, myfilter[[1]], "filter:")
+    if(verbose) cat(tmp, sum(tvar), "- set to", as.numeric(myfilter[[2]]), "\n")
     return(tvar)
-  })) > 0;
-  mydatafc$lfcthresh <- rowSums(abs(mydatafc[, 1:2]) <= as.numeric(gsub("[A-z]", "", lfcthresh))) == 2
+  })) > 0; tvar <- as.numeric(gsub("[A-z]", "", lfcthresh))
+  mydatafc$lfcthresh <- rowSums(abs(mydatafc[, 1:2]) <= tvar) == 2
   if(is.character(lfcthresh)){
     lfcthresh <- as.numeric(gsub("[A-z]", "", lfcthresh))
     if(verbose) cat("Colouring and sizing only above", lfcthresh, lfc)
@@ -181,13 +191,16 @@ crater_plot <- function(
     mydatafc[mydatafc$filters, i] <- as.numeric(myfilter[[2]])
     # outputname <- paste0(outputname, "_", i, gsub(">|<|=", "", myfilter[[1]]))
     tvar <- names(convert) == gsub("[0-9]{1,}|\\.", "", myfilter[[1]])
-    mycaption <- paste0(mycaption, i, sub(names(convert)[tvar], convert[tvar], myfilter[[1]]), "; ")
+    mycaption <- paste0(mycaption, i,
+      sub(names(convert)[tvar], convert[tvar], myfilter[[1]]), "; ")
     if(verbose) cat("; ")
-  }; if(verbose) cat("\n") #outputname <- paste0(outputname, "_", nrow(mydatafc), "features")
+  }; if(verbose) cat("\n")
 
   # Renaming some columns
-  mydatafc$min_padj <- apply(mydatafc[, grep(paste0("\\.", pv, "$"), names(mydatafc))], 1, min, na.rm = TRUE)
-  mydatafc$min_padj[is.na(mydatafc$mean)] <- 1 # is.infinite(mydatafc$min_padj)
+  mydatafc$min_padj <- apply(
+    X = mydatafc[, grep(paste0("\\.", pv, "$"), names(mydatafc))],
+    MARGIN = 1, FUN = min, na.rm = TRUE)
+  mydatafc$min_padj[is.na(mydatafc$mean)] <- 1
   mydatafc$min_padj[mydatafc$min_padj == 0] <- min(mydatafc$min_padj[mydatafc$min_padj > 0])
   mydatafc$significance <- -log10(mydatafc$min_padj)
   mydatafc$gene_name <- features_parse_ensembl(rownames(mydatafc))
@@ -204,23 +217,31 @@ crater_plot <- function(
     as.numeric(gsub("top", "", grep("^top[0-9]+", topgenes, value = TRUE)))
   }else if(is.character(topgenes)){ topgenes }else{ topgenes[1] }
   borgenes <- list(
-    if(is.numeric(topgenes)) bordering(mydatafc[!mydatafc$filters, ], cnames = 1:2, n = topgenes) else borgenes,
-    if(!is.null(gene_pattern)) grep(gene_pattern, rownames(mydatafc), value = TRUE) else gene_pattern,
+    if(is.numeric(topgenes)){
+      bordering(mydatafc[!mydatafc$filters, ], cnames = 1:2, n = topgenes)
+    }else{ borgenes },
+    if(!is.null(gene_pattern))
+      grep(gene_pattern, rownames(mydatafc), value = TRUE) else gene_pattern,
     borgenes
   )
   borgenes <- features_matching(unique(unlist(borgenes)), rownames(mydatafc))
   if(verbose) cat("Showing", length(borgenes), "genes\n")
   mydatafc_repel <- mydatafc[borgenes, ]
-  # ncolor <- make_breaks(c(0, mydatafc$log2_mean), n = length(couls)*2, push = c(max = 0.1))
-  ncolor <- pretty(x = c(0, na.omit(mydatafc$log2_mean)), n = 5)
-  set.seed(27); aesy <- aes_string(x = comp_names[1], y = comp_names[2], color = 'log2_mean', size = 'significance')
+
+  if(is.null(limits_col)) limits_col = range(mydatafc$log2_mean, na.rm = TRUE)
+  if(is.null(limits_size)) limits_size = range(mydatafc$significance, na.rm = TRUE)
+  ncolor <- pretty(x = c(limits_col[1], na.omit(mydatafc$log2_mean), limits_col[2]), n = 5)
+  set.seed(27); aesy <- aes_string(
+    x = comp_names[1], y = comp_names[2],
+    color = 'log2_mean', size = 'significance')
   mysubtitle <- paste0(selection, ifelse(is.null(selection), "", "\n"))
   mysubtitle <- paste0(mysubtitle, 'Passed filters: ', sum(!mydatafc$filters))
   p <- ggplot(data = mydatafc) +
     geom_point(data = mydatafc[mydatafc$filters, ], mapping = aesy) +
     geom_point(data = mydatafc[!mydatafc$filters, ], mapping = aesy) +
-    scale_color_gradientn(colours = couls, breaks = ncolor, na.value = "#f5f5f5") +##c4c4c4
-    # colours = couls, values = scales::rescale(ncolor)
+    scale_color_gradientn(
+      colours = couls, breaks = ncolor, na.value = "#f5f5f5", limits = limits_col
+    ) +
     geom_hline(yintercept = c(-lfcthresh, lfcthresh), linetype = "dashed", alpha = 0.4) +
     geom_vline(xintercept = c(-lfcthresh, lfcthresh), linetype = "dashed", alpha = 0.4) +
     labs(
@@ -232,17 +253,26 @@ crater_plot <- function(
       panel.grid.minor = element_blank(),
       panel.background = element_rect(size = 2)
     )
-  p <- p + guides(size = guide_legend(keywidth = 0.5, keyheight = 0.5, default.unit = "inch"))
-  p <- p + scale_radius(breaks = pretty(mydatafc[!mydatafc$filters, ]$significance, n = 5), range = c(0, 4))
+  p <- p + guides(size = guide_legend(
+    keywidth = 0.5, keyheight = 0.5, default.unit = "inch"))
+  p <- p + scale_radius(
+    breaks = pretty(mydatafc[!mydatafc$filters, ]$significance, n = 5),
+    range = c(0, 4), limits = limits_size)
 
-  aesy <- aes_string(x = comp_names[1], y = comp_names[2], label = 'gene_name')#, size = 'significance')
+  aesy <- aes_string(x = comp_names[1], y = comp_names[2], label = 'gene_name')
   mydatafc_repel$significance[mydatafc_repel$significance == 0] <- 0.1; set.seed(27)
   p <- p + geom_text_repel(data = mydatafc_repel, mapping = aesy, color = 'black')
   return_list <- list(comp_stat = mydatafc, plot = p)
 
+  params = list(breaks = scales::pretty_breaks(n = 7))
   if(!is.null(plot_squared)){
+    if(!is.numeric(plot_squared))
+      plot_squared = max(abs(mydatafc[, 1:2]), na.rm = TRUE)
     p <- plots_squared(p, comp_names, verbose = verbose, limit = plot_squared)
+    params$limits = c(-plot_squared, plot_squared)
   }
+  p <- suppressMessages(p + scale_y_continuous(breaks = params$breaks, limits = params$limits) +
+    scale_x_continuous(breaks = params$breaks, limits = params$limits))
   if(!is.null(theme_extra)) p <- p + theme_extra
 
   if(!isTRUE(return_out)){
@@ -259,19 +289,19 @@ crater_plot <- function(
       suppressPackageStartupMessages(library(plotly))
       pathbk <- getwd(); setwd(dirname(outputname))
       ddfpassed <- mydatafc[!mydatafc$filters, ]
-      ddfpassed$x <- ddfpassed[, comp_names[1]]; ddfpassed$y <- ddfpassed[, comp_names[2]]
-      gp <- plot_ly(
+      ddfpassed$x <- ddfpassed[, comp_names[1]];
+      ddfpassed$y <- ddfpassed[, comp_names[2]]
+      gp <- suppressMessages(plot_ly(
         data = ddfpassed, x = ~x, y = ~y, color = ~log2_mean,
         text = ~paste("Gene: ", gene_name,
           '<br>Significance:', significance, '<br>Mean:', mean)
       ) %>% layout(
         xaxis = list(title = comp_names[1], showgrid = TRUE),
         yaxis = list(title = comp_names[2], showgrid = TRUE)
-      )
-      kk <- try(htmlwidgets::saveWidget(
+      ))
+      kk <- suppressMessages(try(htmlwidgets::saveWidget(
         as_widget(gp), paste0(basename(outputname), '.html')
-      ), silent = TRUE)
-      # print(xtable::xtable(ddfpassed), type = "html", file = paste0(basename(outputname), '_table.html'))
+      ), silent = TRUE))
       setwd(pathbk)
     }
   }
@@ -292,7 +322,7 @@ crater_plot <- function(
         rnames = rownames(mydatafc),
         moments = c("mn", "p"),
         expr_cutoff = 10,
-        v = TRUE
+        verbose = verbose
       )
     })
     mydatafc$gene_name = rownames(mydatafc)
