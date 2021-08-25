@@ -38,7 +38,8 @@ getMostVariableGenes <- function(
   top_n = 500,
   take_sig = TRUE,
   plot = FALSE,
-  verbose = FALSE
+  verbose = FALSE,
+  ...
 ){
   # suppressPackageStartupMessages(library(DESeq2))
   counts <- as.matrix(counts)
@@ -97,6 +98,7 @@ getMostVariableGenes <- function(
     vfit = vfit, df = df, xg = xg, top_n = names(means) %in% varorder,
     pval.adj = adj.pval, is.signif = sigVariedGenes
   )
+  if(isFALSE(normalise)) to_return$edata = ed
   if(plot) plot_hvg(to_return)
   return(to_return)
 }
