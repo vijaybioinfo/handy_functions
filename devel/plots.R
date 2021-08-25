@@ -98,65 +98,63 @@ violin <- function(
   xax = 1,
   yax = 2,
   dots = FALSE,
-  colour_by = NULL, # pct, means (based on 'xax')
+  dots_mean = FALSE,
+  box_median = TRUE,
+  colour_by = NULL, # pct, mean (based on 'xax'); list(title,breaks,[column])
   couls = NULL,
   vsetting = NULL,
   chilli = FALSE
 ){
   if(is.null(colour_by)) colour_by <- xax
-  if(is.numeric(xax)) xax <- colnames(dat)[xax]
-  if(is.numeric(yax)) xax <- colnames(dat)[yax]
   colnames(dat) <- make.names(colnames(dat)) # dashes make it fail...
-  xax <-  make.names(xax)
-  yax <-  make.names(yax)
-  colour_by <-  make.names(colour_by)
-
+  xax <-  make.names(xax); yax <-  make.names(yax)
+  if(!is.list(colour_by)) colour_by <-  make.names(colour_by)
   dat <- dat[order(dat[, xax]), ]
-  dat[, yax] <- as.numeric(dat[, yax])
-  ylims <- range(dat[, yax])
 
   vsetting_master <- list(width = 0.8, alpha = 0.7, trim = TRUE, adjust = 1, scale = 'width')
-  #Deafault: trim = TRUE, scale = "area", adjust = 1
-  vsetting <- lapply(names(vsetting_master), function(x){
+  # Deafault: trim = TRUE, scale = "area", adjust = 1
+  vsetting <- lapply(setNames(nm = names(vsetting_master)), function(x){
     ifelse(x %in% names(vsetting), vsetting[[x]], vsetting_master[[x]])
   })
-  names(vsetting) <- names(vsetting_master)
 
-  if(isTRUE(colour_by %in% colnames(dat))){
-    tvar <- length(unique(dat[, colour_by])) > length(unique(dat[, xax]))
-    if(is.numeric(dat[, colour_by]) && tvar){
+  if(isTRUE(colour_by[[1]] %in% colnames(dat))){
+    gr8rthan_x <- length(unique(dat[, colour_by])) > length(unique(dat[, xax]))
+    if(is.numeric(dat[, colour_by]) && gr8rthan_x){
       means <- tapply(dat[, colour_by], dat[, xax], mean, na.rm = TRUE)
       dat$dummy123 <- sapply(as.character(dat[, xax]), function(X) return(means[X]) )
-      colnames(dat) <- gsub("dummy123", paste0(colour_by, "_avg"), colnames(dat));
-      colour_by <- paste0(colour_by, "_avg")
+      colnames(dat) <- gsub("dummy123", paste0(colour_by, "_mean"), colnames(dat));
+      colour_by <- paste0(colour_by, "_mean")
     }
-  }; filname <- colour_by
-  pct <- tapply(dat[, yax], dat[, xax], function(pop) round(sum(pop > 0, rm.na = TRUE) / length(pop) * 100, digits = 2) )
-  pct[pct>100] <- 100
-  dat$pct <- dat$pct50 <- sapply(as.character(dat[, xax]), function(X) return(pct[X]) )
-  dat$pct50[dat$pct50>50] <- 50
-  means <- tapply(dat[, yax], dat[, xax], mean, na.rm = TRUE)
-  dat$mean <- sapply(as.character(dat[, xax]), function(X) return(means[X]) )
-  dat$mean_full <- dat$mean_12 <- dat$mean
+  }; fillname <- unlist(colour_by)
+  if(isTRUE(any(grepl("pct", fillname)))){ # not wasting time here if not needed
+    pct <- tapply(X = dat[, yax], INDEX = dat[, xax], function(x){
+      round(sum(x > 0, rm.na = TRUE) / length(x) * 100, digits = 2)
+    }); pct[pct > 100] <- 100
+    dat$pct <- sapply(X = as.character(dat[, xax]), FUN = function(X) return(pct[X]) )
+    dat$pct_free <- dat$pct50 <- dat$pct; dat$pct50[dat$pct50 > 50] <- 50
+  }
+  if(isTRUE(any(grepl("mean", fillname)))){
+    means <- tapply(X = dat[, yax], INDEX = dat[, xax], mean, na.rm = TRUE)
+    dat$mean <- sapply(as.character(dat[, xax]), function(X) return(means[X]) )
+    dat$mean_full <- dat$mean
+  }
 
-  if(is.null(couls)) couls = 1
-  if(is.numeric(couls)) couls = couls_opt$red_gradient[[couls]]
-  brks <- NULL
-  master_brks = list( # create a master for breaks in mean and percentage
-    pct = list(filname = '%+', brks = c(0, 10, 20, 40, 60, 80, 100)),
-    mean = list(filname = 'Mean', make_breaks(dat$means)),
-    mean_full = list(filname = 'Mean', make_breaks(dat[, yax])),
-    mean_12 = list(filname = 'Mean', brks = c(0, 2, 4, 6, 8, 10, 12)),
-    pct50 = list(filname = '%+cells', brks = c(0, 5, 10, 20, 30, 40, 50))
+  master_breaks = list( # create a master for breaks; column must exist
+    pct = list('%+', c(0, 10, 20, 40, 60, 80, 100)),
+    pct50 = list('%+', c(0, 5, 10, 20, 30, 40, 50)),
+    pct_free = list('%+', base::pretty(dat$pct, n = 7)),
+    mean = list('Mean', base::pretty(dat$mean, n = 7)),
+    mean_full = list('Mean', base::pretty(dat[, yax], n = 7))
   ) # substitute the master with the given breaks
   if(is.list(colour_by)){
-    if(is.null(names(colour_by))) warning("Breaks must be a named list of list.")
-    master_brks[[names(colour_by)]] <- colour_by; colour_by <- names(colour_by)
-  }
-  if(isTRUE(colour_by %in% names(master_brks))){
-    filname <- master_brks[[colour_by]][[1]]
-    brks <- master_brks[[colour_by]][[2]]
-  }; #if(colour_by == "pct50") colour_by <- "pct"
+    master_breaks[["custom"]] <- colour_by;
+    dat$custom = dat[, ifelse(length(colour_by)>2, colour_by[[3]], yax)]
+    colour_by = "custom"
+  }; brks <- NULL
+  if(isTRUE(colour_by %in% names(master_breaks))){
+    fillname <- master_breaks[[colour_by]][[1]]
+    brks <- master_breaks[[colour_by]][[2]]
+  };
 
   if(isTRUE(chilli) || is.numeric(chilli)){
     if(isTRUE(chilli)) chilli <- 0
@@ -164,45 +162,37 @@ violin <- function(
   }
 
   dp <- ggplot(dat, aes_string(x = xax, y = yax, fill = colour_by))
-  if(isTRUE(dots) || is.numeric(dots)){
-    #round(min(c(ifelse(nrow(d2show) < 20000, nrow(d2show) / 3, nrow(d2show) / 5), 15000)))
-    if(isTRUE(dots)) dots <- 1000
-    set.seed(27);
-    d2show <- dat[unname(sample_even(dat, xax, -dots)), ]
-    # jittered_x <- unlist(lapply(make_list(dat, xax), function(g){
-    #   vipor::offsetX(y = dat[g, yax], x = dat[g, xax])
-    # }))
-    dp <- dp + geom_jitter(
-      data = d2show, mapping =  aes_string(x = xax, y = yax), inherit.aes = FALSE,
-      size = 0.3, shape = 16, position = position_jitter(0.2), color = 'black'
-    )
-  }
   dp <- dp + geom_violin(
-      aes_string(color = colour_by),
+      mapping = aes_string(color = colour_by),
       alpha = vsetting[['alpha']],
       trim = vsetting[['trim']],
       adjust = ifelse(length(table(dat[, xax])) > 1, vsetting[['adjust']], 1),
-      scale = vsetting[['scale']]
-    ) +
-    geom_boxplot(width=0.1, fill = "white", alpha = 0.25, outlier.shape = NA)+
-    cowplot::theme_cowplot() + ylim(ylims)
+      scale = vsetting[['scale']])
+  if(isTRUE(box_median))
+    dp <- dp + geom_boxplot(width=0.1, fill="white", alpha=0.25, outlier.shape=NA)
+  if(isTRUE(dots_mean))
+    dp <- dp + stat_summary(geom="pointrange", fun.data=mean_sdl, alpha=0.6)
+  if(isTRUE(dots) || is.numeric(dots)){
+    if(isTRUE(dots)) dots <- 1000; set.seed(27);
+    d2show <- dat[unname(sample_even(dat, xax, -dots)), ]
+    dp <- dp + geom_jitter(
+      data = d2show, mapping =  aes_string(x = xax, y = yax), inherit.aes = FALSE,
+      size = 0.3, shape = 16, position = position_jitter(0.2), color = 'black')
+  }
+  if(is.null(couls)) couls = 1
+  if(is.numeric(couls)) couls = couls_opt$red_gradient[[couls]]
   if(is.numeric(dat[, colour_by])){
-    if(is.null(brks)){
-      brks <- if(colour_by == "pct") c(0, dat[, colour_by], 100) else dat[, colour_by]
-      brks <- make_breaks(brks, n = length(couls))
-    };# dat[dat[, colour_by] > max(brks), colour_by] <- max(brks)
+    if(is.null(brks)) brks = base::pretty(dat[, colour_by], n = length(couls))
     couls <- colorRampPalette(colors = couls, space = 'Lab')(length(brks))
-    lbrks <- as.character(round(brks, 2))
-    if(any(grepl("\\-", lbrks))) lbrks <- ifelse(!grepl("\\-", lbrks), paste0("+", lbrks), lbrks)
-    lbrks[grepl("\\+0$", lbrks)] <- "  0"
-    arg_list <- list(name = filname, colours = couls, na.value = 'transparent',
-      breaks = brks, labels = lbrks, limits = c(min(brks), max(brks)), guide = "colorbar")
+    arg_list <- list(
+      name = fillname[1], colours = couls, # na.value = 'transparent',
+      breaks = brks, labels = format(brks, digits = 2),
+      limits = c(min(brks), max(brks)),
+      guide = "colorbar")
     dp <- dp + guides(color = guide_colorbar(barwidth = 0.8, barheight = 6)) +
         do.call(scale_color_gradientn, arg_list) +
-        do.call(scale_fill_gradientn, arg_list)
-  }else if(length(unique(dat[, colour_by])) < 10){
-    dp <- dp + scale_fill_brewer(palette = "Set1")
-    dp <- dp + scale_color_brewer(palette = "Set1")
+        do.call(scale_fill_gradientn, arg_list) +
+        theme(legend.text = element_text(hjust = 1))
   }
   dp
 }
@@ -290,7 +280,9 @@ custom_heatmap <- function(
 ){
   if(casefold(class(object)) == 'seurat'){
     if(verbose) cat("Seurat object\n")
-    if(is.null(annoc)) annoc <- object@meta.data
+    if(is.null(annoc)){
+      if(verbose) cat("Taking its meta.data\n"); annoc <- object@meta.data
+    }
   }else if(is.null(annoc)){ stop("Annotation not provided") }
   if(is.null(rnames)) rnames <- rownames(object)
   if(is.null(cnames)) cnames <- colnames(object)
@@ -311,7 +303,9 @@ custom_heatmap <- function(
     cat("\nCategories:", show_commas(categorical_col), "\n")
     cat("Features:", show_commas(rnames), "\n")
     cat("Cells:", show_commas(cnames), "\n")
-    cat("Variables in metadata:", show_commas(colnames(annoc)), "\n\n")
+    cat("Variables in metadata:", show_commas(colnames(annoc)), "\n")
+    cat("Compute mean:", show_commas(use_mean), "\n")
+    cat("Order by:", show_commas(orderby), "\n\n")
   }
 
   tvar <- unique(c(orderby, categorical_col, use_mean)); tvar <- tvar[is.character(tvar)]
@@ -330,18 +324,18 @@ custom_heatmap <- function(
     # annoc$index123 <- paste0("X", do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_")))
     annoc$index123 <- do.call(paste, c(annoc[, use_mean, drop = FALSE], sep = "_"))
     means <- stats_summary_table(
-      mat = object,
-      rnames = rnames,
-      groups = make_list(annoc, colname = 'index123', grouping = TRUE),
+      mat = object, rnames = rnames,
+      groups = setNames(annoc$index123, rownames(annoc)),
       moments = "mn",
       v = verbose
     )
     colnames(means) <- gsub("_mean", "", colnames(means))
-    # annoc <- annoc[!duplicated(annoc$index123), ]
     tvar <- reshape2::melt(table(annoc[, rev(colnames(annoc)), drop = FALSE]))
     tvar <- tvar[tvar$value > 0, -ncol(tvar), drop = FALSE]
-    for(i in colnames(annoc)) if(is.factor(annoc[, i])) tvar[, i] <- factor(as.character(tvar[, i]), levels(annoc[, i]))
-    annoc <- summarise_table(tvar)
+    tvar$index123 <- as.character(tvar$index123)
+    for(i in colnames(annoc))
+      if(is.factor(annoc[, i])) tvar[, i] <- factor(as.character(tvar[, i]), levels(annoc[, i]))
+    annoc <- summarise_table(tvar, verbose = verbose > 1)
     annoc <- annoc[, !colnames(annoc) %in% "index123", drop = FALSE]
     object <- as.matrix(means[, rownames(annoc)])
     if(verbose){ str(annoc); str(object) }
@@ -457,7 +451,7 @@ custom_heatmap <- function(
   palettebreaks <- seq(from = -topz, to = topz, by = 0.1)
 
   if(isTRUE(grepl("NMF", type))){
-    cat("Using NMF\n")
+    if(verbose) cat("Using NMF\n")
     y <- NMF::aheatmap(
       x = mat_to_plot,
       scale = 'none', Rowv = feature_order, Colv = NA,
@@ -466,6 +460,7 @@ custom_heatmap <- function(
       ...
     )
   }else if(isTRUE(grepl("gg", type))){
+    if(verbose) cat("Using ggplot\n")
     ddf = reshape2::melt(mat_to_plot)
     ddf$Var1 <- factor(ddf$Var1, rev(rownames(mat_to_plot)))
     ddf$Var2 <- factor(ddf$Var2, colnames(mat_to_plot))
@@ -477,7 +472,7 @@ custom_heatmap <- function(
     #   ggplot(data = annoc, aes(x = L1, y = 1, fill = value)) + geom_tile() + theme_nothing()
     # }
   }else{
-    cat("Using pheatmap\n")
+    if(verbose) cat("Using pheatmap\n")
     source('https://raw.githubusercontent.com/vijaybioinfo/handy_functions/master/devel/pheatmapCorrection.R')
     if(is.na(feature_order) || is.character(feature_order)) feature_order <- FALSE
     y <- pheatmap(

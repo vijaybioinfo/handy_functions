@@ -144,7 +144,7 @@ signature_scoring <- function(
         couls = NULL, # colors for columns and rows
         hcouls = c('yellow', 'black', 'blue'),
         regress = c('nCount_RNA', 'percent.mt'),
-        verbose = FALSE
+        verbose = FALSE, show_colnames = FALSE
       ))
       graphics.off()
     }

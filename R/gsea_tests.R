@@ -797,7 +797,11 @@ gsea_process_list = function(
     slist, include = NULL, exclude = NULL, global = list(), fun = NULL, ...
 ) {
   slist <- if(!is.list(slist)) as.list(slist) else slist
-  slist <- unlist(lapply(slist, as.list), recursive = FALSE)
+  slist <- unlist(lapply(slist, FUN = function(x){
+    if(file.exists(x[[1]][1]))
+      x <- as.list(readfile(x[[1]][1], stringsAsFactors = FALSE))
+    as.list(x)
+  }), recursive = FALSE)
   slist <- sapply(slist, function(x){ y <- x[!is.na(x)]; y[which(y != "")] })
   slist <- slist[sapply(slist, length) > 0]; #str(slist)
   slist <- c(global, slist[!names(slist) %in% names(global)])
