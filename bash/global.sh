@@ -10,7 +10,7 @@ check_dir_content () {
     echo -e "Contains:\n`ls $1`"
     printf "\033[0;31m%0.s=\033[0m" $(seq 1 ${#DELIM}); echo
     while true; do
-      read -p "Do you wish to erase previous information and continue with the anaylisis? (y/n/s): " yn
+      read -p "Do you wish to erase previous information and continue with the analysis? (y/n/s): " yn
       case $yn in
         [Yy]* ) read -p "Are you completely sure? " yn
           case $yn in
@@ -95,12 +95,87 @@ jobid () {
 
 function backup () {
 	MYPATH=`dirname ${1}`
-	NEWNAME=${MYPATH}/.`basename ${1}`_`date +'%Y_%m_%d'`
+	NEWNAME=${MYPATH}/.`basename ${1}`_`date +'%Y_%m_%d_%H_%M_%S'`
 	echo "Backing to ${NEWNAME}"
 	if [ -d ${1} ]; then
-		echo "It is a folder: changing name to `basename ${1}`_`date +'%Y_%m_%d'`"
-		mv ${1} ${MYPATH}/`basename ${1}`_`date +'%Y_%m_%d'`
+		echo "It is a folder: changing name to ${MYPATH}/.`basename ${1}`_`date +'%Y_%m_%d'`"
+		cp -R ${1} "${MYPATH}/.`basename ${1}`_`date +'%Y_%m_%d'`"
 	else
 		cp ${1} ${NEWNAME}
 	fi
+}
+
+function fastq_reads_n () {
+	if echo "${1}" | grep -q "gz$" ; then
+		echo "Using zcat: ${1}"
+		NREADS=$(($(zcat $1 | wc -l) / 4 | bc))
+	else
+		echo "Using cat: ${1}"
+		NREADS=$(($(cat $1 | wc -l) / 4 | bc))
+	fi
+	echo ${NREADS}
+}
+
+killsc () {
+	screen -ls | grep .
+        echo 'Enter screen to be killed:'; read session
+        screen -S ${session} -X quit
+}
+
+scrf () {
+	screen -ls | grep \(
+        echo 'Enter screen to be attached:'; read session
+        screen -r ${session}
+}
+
+qsum () {
+  echo -e "User\t\tQ\tR\tC\tH\tQueue\t\tNodes"
+  for u in `qstat -a | awk '/herman/ { print $2 }' | sort -u`; do
+    nr="`qstat -u $u | grep herman | grep " R " | wc -l`"
+    nq="`qstat -u $u | grep herman | grep " Q " | wc -l`"
+    nc="`qstat -u $u | grep herman | grep " C " | wc -l`"
+    nh="`qstat -u $u | grep herman | grep " H " | wc -l`"
+    queue=(`qstat -u $u | awk '/herman/ { print $3 }' | sort -u`)
+    nody=(`qstat -n1u $u | awk '/herman/ { print $12 }' | sort -u | grep compute | sed 's/compute.//'`)
+    if [ ${#u} -gt 7 ]; then
+      echo -e "${u}\t${nq}\t${nr}\t${nc}\t${nh}\t${queue[@]}\t\t${nody[@]}"
+    else
+      echo -e "${u}\t\t${nq}\t${nr}\t${nc}\t${nh}\t${queue[@]}\t\t${nody[@]}"
+    fi
+  done
+}
+
+findmapf () {
+	echo 'Pattern:'; read IDT
+        PATHIES=(`ls /mnt/NGSAnalyses/RNA-Seq/Mapping/ | grep $IDT`)
+        for PATHY in ${PATHIES[@]}; do
+                RFILE=/mnt/NGSAnalyses/RNA-Seq/Mapping/${PATHY}/report.html; if [ ! -s ${RFILE} ]; then continue; fi
+                echo "/mnt/NGSAnalyses/RNA-Seq/Mapping/${PATHY}/"
+                echo "`grep "Genome:" /mnt/NGSAnalyses/RNA-Seq/Mapping/${PATHY}/report.html`"
+        done
+}
+
+function join_by {
+  local d=$1; shift; echo -n "$1"; shift; printf "%s" "${@/#/$d}"
+}
+
+function find_job(){
+  # qstat -fu ${USER} | grep -E 'Job_Name|Job Id|job_state'
+  MYIDS=$(
+    qstat -f | grep -E 'Job_Name|Job Id|job_state' |
+      grep -EB 2 " = R| = Q| = H" |
+      sed 's/Id: /Id_/g; s/ = /: /g; s/.herman.*/:/g' |
+      grep -C 3 ${1} | grep "Id_" | sed -E 's/.*Id_|://g'
+  )
+  join_by ":" ${MYIDS}
+}
+# qsub -W depend=afterok:$(find_job "jobs_pattern") pbs_file
+
+summrep () {
+	qstat -q
+        showq | grep "active" | more
+}
+
+function archive () {
+  R -e "file.archive('${1}')" --slave
 }
