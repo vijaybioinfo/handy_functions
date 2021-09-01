@@ -745,7 +745,6 @@ count_transformation <- function(
   return(list(data = cts, type = dtype))
 }
 
-### Plotting ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 MASS_kde2d <- function(x, y, ...) {
   band.nrd = MASS::bandwidth.nrd
   dens <- MASS::kde2d(x, y,
@@ -754,4 +753,19 @@ MASS_kde2d <- function(x, y, ...) {
     ...
   ); ix <- findInterval(x, dens$x); iy <- findInterval(y, dens$y)
   return(dens$z[cbind(ix, iy)])
+}
+
+values_capped <- function(
+  x, value_min = NULL, value_max = NULL,
+  quantiles = 0.95, verbose = FALSE
+){
+  value_ran <- round(range(x, na.rm = TRUE), 3)
+  if(is.null(value_min)) value_min <- value_ran[1]
+  if(is.null(value_max)) value_max <- quantile(x = x, probs = quantiles, na.rm=TRUE)
+  y <- x; y[y < value_min] <- value_min
+  y[y > value_max] <- value_max
+  caption_this = paste0("Values ranged from ", value_ran[1],
+    " to ", value_ran[2], "; capped at ", value_min, " and ",
+    quantiles, " (quantile, ", round(value_max, 3), ")")
+  cat(caption_this, "\n"); y
 }

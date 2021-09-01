@@ -54,18 +54,18 @@ filters_complex <- meta_filtering <- function(
   for(addgene in unique(c(cname, sapply(filters, head, 1)))){
     if(addgene %in% colnames(mdata)) next # if it's not in the annotation already
     gg <- unlist(strsplit(gsub("tag_|_[0-9]+", "", addgene), sepchar))
-    if(grepl("tag", addgene) && all(gg %in% rownames(cts))){
-      if(verbose) cat("Adding gene tags\n")
+    if(grepl("tag", addgene)){ #  && all(gg %in% rownames(cts))
       explevel <- as.numeric(gsub("tag_.*_", "", unlist(strsplit(addgene, sepchar))))
       explevel <- ifelse(is.na(explevel), 0, explevel)
       tags_df <- features_add_tag(
         gg, mdata, cts,
-        thresh = tvar, tag = c('tag', 'p', 'n'),
+        thresh = explevel,
+        tag = c('tag', 'p', 'n'),
         verbose = verbose
       )
       tags_df[, addgene] <- apply(tags_df, 1, paste, collapse = "_")
       print(reshape2::melt(table(tags_df[, addgene])))
-      mdata <- cbind(tags_df, mdata); headmat(mdata)
+      mdata <- cbind(tags_df, mdata);
     }
   }
 

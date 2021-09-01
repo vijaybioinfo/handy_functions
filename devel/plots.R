@@ -1,10 +1,9 @@
 #!/usr/bin/R
 
-suppressPackageStartupMessages({
-  library(ggplot2)
-  library(cowplot)
-})
-theme_set(theme_cowplot())
+# suppressPackageStartupMessages({
+#    library(ggplot2)
+#    library(cowplot)
+# }); theme_set(theme_cowplot())
 
 # Colour brewer: colorbrewer2.org
 # Colour brewer expanded: https://bl.ocks.org/emeeks/8cdec64ed6daf955830fa723252a4ab3
@@ -826,8 +825,8 @@ stat_quadrant_fun = function(
   qposition
 }
 
-StatQuadrant <- ggproto(
-  "StatQuadrant", Stat,
+StatQuadrant <- ggplot2::ggproto(
+  "StatQuadrant", ggplot2::Stat,
   required_aes = c("x", "y"),
   compute_panel = stat_quadrant_fun,
   default_aes = ggplot2::aes(
@@ -921,6 +920,7 @@ margin_density = function(data, x, group){
 plot_facet_wrap = function(p, facet, ...) {
   p + facet_wrap(facets = paste("~", facet), ...) +
     theme(
+      panel.border = element_rect(fill = NA), # 2021-08-30
       strip.background = element_rect(fill = NA),
       strip.text = element_text(face = "bold")
     )

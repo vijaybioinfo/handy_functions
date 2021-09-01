@@ -60,7 +60,7 @@ suppressPackageStartupMessages({
       rows = row_start:(length_i+row_start),
       cols = i$cols, gridExpand = TRUE)
     if(!is.null(color_header)){
-      if(verbose > 1) cat("Header style\n")
+      if(verbose > 1) cat("   header style\n")
       if(is.null(i$start)) i$start = row_start
       addStyle(
         wb = wfile, sheet = sheet, style = .header_style(fill = color_header),
@@ -94,6 +94,8 @@ suppressPackageStartupMessages({
 #' @param rename_columns Make columns unique (grouped columns), Default: TRUE.
 #' @param round_num Number of decimal places to round to, Default: 2.
 #' @param body_start Row to format elements after header, Default: 4.
+#' @param body_start_h Column titles' height, Default: 18.
+#' @param col_w Column widths, Default: 16.
 #' @param verbose Show progress, Default: TRUE.
 #'
 #' @keywords EXCEL formats
@@ -148,7 +150,8 @@ supp_table <- function(
   rename_columns = TRUE,
   round_num = 2,
   body_start = 4,
-  body_start_n = 18,
+  body_start_h = 18,
+  col_w = 16,
   verbose = TRUE
 ){
 
@@ -198,7 +201,12 @@ supp_table <- function(
       }
     )
     taken_cols <- unname(unlist(headers2write));
-    if(verbose){
+    lefty_cols <- setdiff(colnames(ddf), taken_cols)
+    if(verbose && length(lefty_cols) > 0){
+      cat("Excluded columns:", length(lefty_cols), "\n")
+      print(format(lefty_cols, justify = "centre", trim = TRUE))
+    };
+    if(verbose > 1){
       cat("Columns:", length(taken_cols), "\n")
       print(format(taken_cols, justify = "centre", trim = TRUE))
     }; if(length(taken_cols) == 0) warning("No columns found in ", tname, "\n")
@@ -237,7 +245,7 @@ supp_table <- function(
         }; taken_new
       }; # taken_new <- make.unique(taken_new)
       if(verbose > 1) str(ddf); colnames(ddf) <- taken_new
-    }; if(verbose) str(ddf)
+    }; if(verbose > 1) str(ddf)
 
     tabname = gsub(".*~", "", tname)
     if(verbose) cat("Tab name:", tabname, "\n")
@@ -279,13 +287,26 @@ supp_table <- function(
     if(verbose) cat(" - headers\n")
     for(taken in taken_cols){
       if(verbose > 1) cat("  * '", taken, "' > ", sep = "")
-      tvar <- which(sapply(headers2write, function(x) any(grepl(taken, x)) ))
-      if(length(tvar) > 1){ cat("\n"); print(tvar); print(headers2write) }
-      ctype <- names(which(sapply(names(headers[[tvar]]), grepl, taken)))
+      tvar <- which(sapply(headers2write, function(x){
+        y <- make.names(taken)
+        y <- ifelse(grepl("^[0-9]", taken), gsub("^X", "", y), y)
+        any(grepl(y, x))
+      }))
+      if(length(tvar) != 1){
+         cat("\n"); cat("Trying to take"); str(tvar); cat("From:"); print(headers2write)
+      }; ctype <- names(which(sapply(names(headers[[tail(tvar, 1)]]), grepl, taken)))
       this_header = which(taken_cols %in% taken)
       start_log <- this_header %in% hfeatures && heads[this_header] == "none"
+      tvar <- which(names(colnamestype) %in% ctype)
+      if(length(tvar) != 1){
+        tmp <- colnamestype[tvar]
+        tmp <- paste0(paste0(names(tmp), "=", tmp), collapse = " and ")
+        tmp1 <- paste0(ctype, collapse = " and ")
+        warning("Trying to take ", tmp, "\n  Using: ", tmp1,
+          "\n  Patterns should be unique; using last match")
+      }
       formats = list(
-        format = colnamestype[[which(names(colnamestype) %in% ctype)]],
+        format = colnamestype[[tail(tvar, 1)]],
         start = if(start_log) body_start_i else header_group, cols = this_header
       )
       workfile = .body_style_fun(wfile = workfile, sheet = tabname,
@@ -313,10 +334,12 @@ supp_table <- function(
     }
 
     if(verbose) cat("Setting widths\n") # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    setColWidths(wb = workfile, sheet = tabname, cols = 1:ncol(ddf), widths = 16)
-    if(any(!heads == "none"))
+    setColWidths(wb = workfile, sheet = tabname, cols = 1:ncol(ddf), widths = col_w)
+    if(any(!heads == "none")){ # Setting merged titles' heights
       setRowHeights(wb = workfile, sheet = tabname, rows = header_group, heights = 36)
-    setRowHeights(wb = workfile, sheet = tabname, rows = body_start_i, heights = body_start_n)
+      setColWidths(wb = workfile, sheet = tabname, cols = 1, widths = 24)
+    }
+    setRowHeights(wb = workfile, sheet = tabname, rows = body_start_i, heights = body_start_h)
   }
   if(!is.null(filename)){
     fname <- paste0(filename, ifelse(grepl("xlsx$", filename), "", ".xlsx"))
