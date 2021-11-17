@@ -74,12 +74,12 @@ gsea_tests <- function(
   names(vals) <- guniverse
   str(vals)
 
-  # get a gene set
+  if(verbose) cat("Getting gene sets ")
   if(file.exists(as.character(gsea_list[[1]][1]))){
-    if(verbose) cat("Getting gene sets file\n")
+    if(verbose) cat("from file\n")
     gset_list <- readfile(gsea_list, stringsAsFactors = F, header = TRUE, verbose = verbose)
   }else if(any(unlist(gsea_list) %in% guniverse)){
-    if(verbose) cat("Given", class(gsea_list), "of genes\n")
+    if(verbose) cat("from", class(gsea_list), "\n")
     gset_list <- if(!is.list(gsea_list)) list(gene_list = gsea_list) else gsea_list
   }else if(is.numeric(gsea_list)){
     if(verbose) cat("Human Gene Ontology to HUGO Symbol list from 'liger'\n",
@@ -508,7 +508,8 @@ gsea_summary_plot = gsea_plot_summary = function(
     p <- ggplot(ddf, aes(x = Var2, y = Var1)) +
       geom_tile(aes(fill = value)) +
       scale_fill_gradientn(colours = mypalette(20)) +
-      labs(fill = NULL, x = NULL, y = NULL)
+      labs(fill = NULL, x = NULL, y = NULL) +
+      theme(axis.text.x = element_text(angle = 90))
     pdf(paste0(fname0, "_heatmap.pdf"), width = 10); print(p); p
   }else{
     pheatmap::pheatmap(

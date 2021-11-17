@@ -380,7 +380,7 @@ features_find = function(
   features_df$found <- apply(X = features_df, MARGIN = 1, FUN = function(x){
     y <- unlist(strsplit(x, "~")) # if() y <- casefold(y, upper = TRUE)
     z <- y[y %in% universe]
-    if(length(z) == 0){
+    if(length(z) == 0 && thesarus){
       z <- unique(c(y, unlist(Seurat::GeneSymbolThesarus(
         symbols = y, timeout = 15, several.ok = TRUE))))
       z <- y[y %in% universe]

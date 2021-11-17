@@ -169,8 +169,10 @@ violin <- function(
       scale = vsetting[['scale']])
   if(isTRUE(box_median))
     dp <- dp + geom_boxplot(width=0.1, fill="white", alpha=0.25, outlier.shape=NA)
-  if(isTRUE(dots_mean))
-    dp <- dp + stat_summary(geom="pointrange", fun.data=mean_sdl, alpha=0.6)
+  # https://ggplot2.tidyverse.org/reference/hmisc.html
+  if(isTRUE(dots_mean)) # https://ggplot2.tidyverse.org/reference/mean_se.html
+    dp <- dp + stat_summary(geom = "point", fun = "mean", alpha=0.6, size = rel(3))
+    # dp <- dp + stat_summary(geom="pointrange", fun.data=mean_se, alpha=0.6)
   if(isTRUE(dots) || is.numeric(dots)){
     if(isTRUE(dots)) dots <- 1000; set.seed(27);
     d2show <- dat[unname(sample_even(dat, xax, -dots)), ]
@@ -944,7 +946,8 @@ scatter_contour = function(
   }
   aesy = if(!is.null(axis_z)){
     aes_string(x = axis_x, y = axis_y, color = axis_z)
-  }else{ aes_string(x = axis_x, y = axis_y) }
+    aes(x = !!rlang::sym(axis_x), y = !!rlang::sym(axis_y), color = !!rlang::sym(axis_z))
+  }else{ aes(x = !!rlang::sym(axis_x), y = !!rlang::sym(axis_y)) }
   p <- ggplot(data = data, mapping = aesy) + geom_point(size = 0.5)
   if(!is.null(axis_z))
     p <- p + geom_density2d(data = data[dps, ], colour = "#c0c5ce")

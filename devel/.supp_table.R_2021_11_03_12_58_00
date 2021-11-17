@@ -315,7 +315,7 @@ supp_table <- function(
         row_start = body_start_i, length_i = nrow(ddf),
         formats = list(formats), color_header = color_header, verbose = verbose)
     }; if(verbose) cat(" - body by section\n")
-    for(headname in unique(heads)){
+    for(headname in heads){
       if(verbose > 1) cat("  * '", headname, "'\n")
       addStyle(
         wb = workfile, sheet = tabname, style = .body_section_style(),

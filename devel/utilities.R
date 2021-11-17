@@ -240,31 +240,52 @@ column_collapse <- function(metab, rname = 1, verbose = FALSE){
   sx
 }
 
-# Summarises a table by the complement of a column
+# Summarises a table by the categories of a column
 summarise_table = function(
   x,
   column = colnames(x)[1],
   sep = "|",
+  numeric_fun = mean,
+  expand = FALSE,
   verbose = FALSE
 ){
   if(verbose) str(x)
   if(verbose) cat("Column:", column, "\n")
-  x[, column] <- factormix(x[, column])
+  x[, column] <- factor(x[, column])
+  x <- x[, c(column, setdiff(colnames(x), column))]
   summarised <- if(ncol(x) == 1){
     return(x)
   }else{
     if(verbose) cat("Summarising:", nlevels(x = x[, column]), "elements\n")
-    y <- lapply(X = setNames(levels(x = x[, column]), levels(x = x[, column])),
+    y <- lapply(
+      X = setNames(nm = levels(x = x[, column])),
       FUN = function(ident) {
-        slice <- x[x[, column] == ident, , drop = FALSE]; if(verbose) cat(".")
-        z <- data.frame(lapply(setNames(2:ncol(slice), colnames(slice)[-1]), function(i){
-          y <- slice[, i]; if(is.factor(y)) y <- droplevels(y)
-          if(!is.numeric(y)) paste0(levels(factormix(y)), collapse = sep) else mean(y)
-        })); z[, column] <- ident; z
-    }); if(verbose) cat("\n"); #y <- data.frame(reshape2::melt(data.table::rbindlist(y)));
-    y <- as.data.frame(data.table::rbindlist(y))
-    y <- y[, ncol(y):1]; rownames(y) <- y[, 1]
-    for(i in colnames(x)) if(is.factor(x[, i])) y[, i] <- factor(as.character(y[, i]), levels(x[, i]))
+        slice <- x[which(x[, column] %in% ident), , drop = FALSE];
+        if(verbose > 1) cat(" -", ident, "\n")
+        # Collapsed into the same columns
+        z <- if(!expand){
+          temp <- try(setNames(2:ncol(slice), colnames(slice)[-1]))
+          if(class(temp) == 'try-error'){ str(slice); stop(ident, " failed") }
+          data.frame(lapply(
+            X = temp,
+            FUN = function(i){
+              y <- slice[, i]; if(is.factor(y)) y <- droplevels(y)
+              if(!is.numeric(y)) paste0(levels(factormix(y)), collapse = sep) else numeric_fun(y)
+          }));
+        }else{ # Expand columns
+          props <- lapply(slice[, -1, drop = FALSE], table)
+          z <- data.frame(t(reshape2::melt(props)), stringsAsFactors = FALSE)
+          colnames(z) <- unlist(lapply(props, names))
+          z$total <- nrow(slice); z[2, ]
+        }; z[, column] <- ident; z
+    }); if(verbose) cat("\n");
+    y <- as.data.frame(data.table::rbindlist(y, fill = TRUE))
+    y <- y[, c(column, setdiff(colnames(y), column))];
+    rownames(y) <- as.character(y[, column])
+    if(expand) for(i in colnames(y)[-1]) y[, i] <- as.numeric(y[, i])
+    for(i in colnames(x))
+      if(is.factor(x[, i]) && (i %in% colnames(y)))
+        y[, i] <- factor(as.character(y[, i]), levels(x[, i]))
     y
   }; return(summarised)
 }
@@ -642,16 +663,17 @@ make_list <- function(x, colname = colnames(x)[1], col_objects = NULL, grouping 
 ### Features handling ### %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Eliminating ensmbl number
 features_parse_ensembl <- parse_ens_name <- function(x, keepens = FALSE){
-  tvar <- "X1234" # removing the ensembl name
+  pattern <- "X1234" # removing the ensembl name
   if(grepl("ENS", x[1]) && grepl("[0-9]", x[1])){
     ensloc <- all(grepl("^ENS", x[1:10])) # find which side the names are
     if(isTRUE(keepens)) ensloc <- !ensloc
-    tvar <- ifelse(ensloc, ".*_", "_.*")
-    tvar <- paste0(c(tvar, ifelse(ensloc, ".*\\|", "\\|.*")), collapse = "|")
-  }
-  tvar <- gsub("\\-", "_", gsub(tvar, "", x)) # so we can keep the dashes!
-  tvar <- make.names(tvar, unique = TRUE, allow_ = TRUE)
-  gsub("_", "-", tvar) # returning dashes ;)
+    pattern <- ifelse(ensloc, ".*_", "_.*")
+    pattern <- paste0(c(pattern, ifelse(ensloc, ".*\\|", "\\|.*")), collapse = "|")
+  }; newnames <- gsub(pattern, "", x); tmp <- grepl("\\-", newnames)
+  newnames[tmp] <- gsub("\\-", "_", newnames[tmp]) # so we can keep the dashes!
+  newnames <- make.names(newnames, unique = TRUE, allow_ = TRUE)
+  newnames[tmp] <- gsub("_", "-", newnames[tmp]) # returning dashes ;)
+  newnames
 }
 
 # find genes even if they have ensembl ids

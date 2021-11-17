@@ -49,6 +49,7 @@ clean_feature_list <- function(
 # c("#fffffa", "#fffeee", "#ffe080", "#ffc100", "#ff0000", "#EE0000", "#a10000", "#670000")
 signature_scoring <- function(
   object,
+  metadata = NULL,
   prefix = NULL,
   lsignatures = list(name = "orig.Cell.Cycle", S.Score = cc.genes$s.genes, G2M.Score = cc.genes$g2m.genes),
   group = FALSE, # group signatures with same name [and description] (NAME_description_source)
@@ -64,6 +65,10 @@ signature_scoring <- function(
   if(verbose) cat("-- Signature scoring --\n")
   prefix <- dircheck(prefix)
   if(verbose) cat("Output:", prefix, "\n")
+  if(!is.null(metadata)){
+    object <- object[, rownames(metadata)]
+    object@meta.data <- joindf(object@meta.data, metadata)
+  }
 
   if(any(!confounders %in% colnames(object@meta.data))){
     confounders <- filters_columns(object@meta.data, include = confounders, maxn = 56, v = verbose)
@@ -170,7 +175,7 @@ signature_scoring <- function(
       )
       if(is.file.finished(fname)) next
       tvar <- length(table(ddfplot[, confy]))
-      ddfplot[, confy] <- factormix(ddfplot[, confy])
+      # ddfplot[, confy] <- factormix(ddfplot[, confy])
       p <- violins(
         dat = ddfplot,
         xax = confy,

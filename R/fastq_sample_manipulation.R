@@ -22,21 +22,21 @@ fastq_create_map_table <- function (
   mypath,
   verbose = TRUE
 ) {
-  mysamples <- if(any(dir.exists(mypath))){
+  samples <- if(any(dir.exists(mypath))){
     if(verbose) cat(mypath, sep = '\n')
     list.files(path = mypath, full.names = TRUE)
   }else{
     mypath
   }
-  unames = fastq_unique_names(mysamples)
+  unames = fastq_unique_names(samples)
   if(verbose){
     cat(length(unames), 'samples\n');
     cat(head(unames, 4), "...\t...", tail(unames, 4), sep = '\n')
   }
   data.frame(
     "sample ID" = basename(unames),
-    fastq_f = mysamples[seq(from = 1, to = length(mysamples), by = 2)],
-    fastq_r = mysamples[seq(from = 2, to = length(mysamples), by = 2)],
+    fastq_f = samples[seq(from = 1, to = length(samples), by = 2)],
+    fastq_r = samples[seq(from = 2, to = length(mysamples), by = 2)],
     check.names = FALSE
   )
 }
@@ -45,12 +45,14 @@ fastq_create_map_table <- function (
 fastq_merge_commands <- function(
   x,
   cmd_only = TRUE,
-  rename = NULL # number of parents to rename to
+  str_substitute = NULL,
+  rename = NULL # number of parents to rename to; transforms the "/" into "_"
 ){
-  summaries <- lapply(x, function(mysample){
-    mysample <- unlist(mysample)
+  summaries <- lapply(x, function(sample_x){
+    sample_x <- unlist(sample_x)
+    if(!is.null(str_substitute)) sample_x <- stringr::str_replace_all(sample_x, str_substitute)
     f2merge <- unlist(lapply(
-      X = mysample,
+      X = sample_x,
       FUN = function(i) system(paste0('ls ', i, "*_R*.fastq*"), intern = TRUE)
     ))
     suffix <- sapply(f2merge, function(samp) sub(".*R[0-9]{1,1}(.*fastq.*)", "\\1", samp), USE.NAMES = FALSE)
@@ -64,10 +66,10 @@ fastq_merge_commands <- function(
       names(which(sapply(rs, function(ri) grepl(paste0("_", ri, "_|_", ri, "\\."), samp) )))
     }, USE.NAMES = FALSE)
     newname <- if(is.null(rename)){
-      tvar <- basename(mysample)
+      tvar <- basename(sample_x)
       sub("FQs|_{2,}", "", tvar[which.min(nchar(tvar))])
     }else if(is.numeric(rename)){
-      tvar <- paste0(unique(tail(unlist(strsplit(mysample, "/")), rename)), collapse = "_")
+      tvar <- paste0(unique(tail(unlist(strsplit(sample_x, "/")), rename)), collapse = "_")
       sub("FQs|_{2,}", "", tvar)
     }else{
       newname <- paste0(rename, newname)
@@ -80,15 +82,14 @@ fastq_merge_commands <- function(
       cmds <- paste0('cp ', f2merge, " ", newname)
     }else{
       cmds <- paste0('cat ', f2merge, addition, newname)
-      # cmds <- paste0('cat ', mysample, "*", unique(reads), suffix_final, addition, unique(newname))
+      # cmds <- paste0('cat ', sample_x, "*", unique(reads), suffix_final, addition, unique(newname))
     }
     if(isTRUE(cmd_only)) return(cmds)
     list(
       found = f2merge,
       command = cmds
     )
-  })
-  # names(summaries) <- unname(unlist(x))
+  });# names(summaries) <- unname(unlist(x))
   if(isTRUE(cmd_only)) unlist(summaries) else return(summaries)
 }
 
@@ -155,12 +156,13 @@ fastq_copy <- function(x){
   if(any(!file.exists(sub(".*> ", "", x)))){
     cat("====================== Copying files\n")
     void <- sapply(x, function(y){
-        cat(gsub("cat |_001.fastq.gz", "", y))
-        if (!file.exists(sub(".*> ", "", y))){
-          cat("\n")
-        }else{ cat(" - existing\n") }
-        system(y)
-      })
+      cat(which(x == y), "/", length(x), " ")
+      cat(gsub("cat |_001.fastq.gz", "", y))
+      if (!file.exists(sub(".*> ", "", y))){
+        cat("\n")
+      }else{ cat(" - existing\n") }
+      system(y)
+    })
   }else{ cat("====================== Files copied\n") }
 }
 
@@ -217,8 +219,7 @@ fastq_processed_checksum <- function(
   )
 }
 
-fastq_processed_zip <- function(){
-  txtnames <- list.files(pattern = "txt$")
+fastq_processed_zip <- function(txtnames = list.files(pattern = "txt$")){
   txtnames <- txtnames[!grepl('checksum|instrument', txtnames)]
   void <- sapply(txtnames, function(x){
     cat(x)
@@ -226,4 +227,46 @@ fastq_processed_zip <- function(){
       cat(" - zipping\n"); system(paste0('gzip ', x)); return(TRUE)
     }; cat("\n")
   })
+}
+
+fastq_runs <- function(
+  x,
+  file_run = paste0("../", basename(getwd()), "_instrument.txt")
+){
+  ilines <- c(
+    "Instrument", "Paired", "Forward", "Reverse", "genome", # core mappping
+    "PairEndFC", "Flowcell", "Read", "Application" # run reports
+  )
+  elines <- c(
+    "Version", "Health", "Custom", "Planned", "IndexRead", "IsIndexedRead" # run reports
+  )
+  ilines <- paste0("-P '", paste0(ilines, collapse = "|"), "'")
+  elines <- paste0("-Pv '", paste0(elines, collapse = "|"), "'")
+  for(i in unique(x)){
+    cat(i)
+    tvar <- paste("find", i, "-maxdepth 3 -name *Stats.json")
+    temp <- system(tvar, intern = TRUE)
+    if(length(temp) == 0){ cat(yelo(" no Stats.json found\n")); next }
+    temp <- suppressWarnings(yaml::read_yaml(temp))
+    if(file.exists(file_run)){
+      y <- suppressWarnings(system(paste("grep ", temp[["RunId"]], file_run), intern = TRUE))
+      if(length(y) == 1){ cat(gren(" added\n")); next }
+    }; cat("\n")
+    runs <- paste0(c("/mnt/Hiseq2500/", "/mnt/NovaSeq/"), temp[["RunId"]])
+    runs <- runs[file.exists(runs)]
+    if(!file.exists(file_run)) system(paste0("echo META INFO > ", file_run))
+    for(run in runs){
+      fname <- paste0(run, "/", c("InputMetadata.csv", "RunParameters.xml", "runParameters.xml"))
+      fname <- fname[file.exists(fname)]
+      system(paste0("echo '---- ", basename(run), " ----' >> ", file_run))
+      system(paste0("echo 'Parent folder: ", basename(dirname(run)), "' >> ", file_run))
+      void <- sapply(fname, function(x){
+        system(paste0("echo ", basename(x), " >> ", file_run))
+        if(!file.exists(x)){ system(paste0("echo 'No Metadata file(s)' >> ", file_run)); return(NULL) }
+        system(paste0("grep ", ilines, " ", x, " | grep ", elines, " | sort -u >> ", file_run))
+        system(paste0("echo >> instrument.txt"))
+        NULL
+      })
+    }
+  }; system(paste("cat", file_run))
 }
