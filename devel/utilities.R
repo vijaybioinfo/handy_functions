@@ -41,20 +41,24 @@ file.archive = function(pattern, name = "archive/", exclude = NULL, type = "mv")
   # type = match.arg(type)
   outdir = paste0(name, Sys.Date(), "/")
   dir.create(outdir, recursive = TRUE)
-  y <- list.files(
-    path = dirname(pattern),
-    pattern = basename(pattern),
-    full.names = TRUE
-  )
+  y <- if(any(file.exists(pattern))){
+    list.files(
+      path = dirname(pattern),
+      pattern = basename(pattern),
+      full.names = TRUE, all.files = TRUE
+    )
+  }else{ pattern }
   if(!is.null(exclude)) y <- y[!grepl(pattern = exclude, x = y)]
   if(length(y)){ # wil try to mirror the folder tree
     command = paste0(type, " ", y, " ", outdir, dirname(y), "/"); cat(command, sep = "\n")
-    ask <- if(interactive()) readline("Press 1[ENTER] to move file(s): ") else 1
+    # ask <- if(interactive()) readline("Press 1[ENTER] to move file(s): ") else 1
+    cat("Press 1[ENTER] to move file(s): ")
+    ask <- if(interactive()) readline("") else readLines("stdin", n = 1)
     if(ask == 1){
-      lapply(1:length(y), function(x){
+      cat("\n"); lapply(1:length(y), function(x){
         outdir_i = paste0(outdir, dirname(y[x]), "/")
         if(!dir.exists(outdir_i)) dir.create(outdir_i)
-        command_i = paste("mv", y[x], outdir_i); cat(command_i, sep = "\n")
+        command_i = paste(type, y[x], outdir_i); cat(command_i, sep = "\n")
         system(command_i)
       })
     }

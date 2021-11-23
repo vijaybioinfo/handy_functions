@@ -292,7 +292,7 @@ custom_heatmap <- function(
   if(!any(categorical_col %in% colnames(annoc))){
     categorical_col <- filters_columns(annoc, include = categorical_col, v = verbose)
   }; categorical_col <- categorical_col[categorical_col %in% colnames(annoc)]
-  if(is.null(orderby)) orderby <- categorical_col[1]
+  # if(is.null(orderby)) orderby <- categorical_col[1]
 
   if(isTRUE(sample_it[1]) || is.character(sample_it)){
     nsample <- if(length(sample_it) > 1) as.numeric(sample_it[2]) else NULL
@@ -357,7 +357,7 @@ custom_heatmap <- function(
       verbose = verbose
     )
     annoc <- annoc[unname(unlist(tvar)), ]
-  }else{
+  }else if(!is.null(orderby)){
     if(verbose) cat("\norder(annoc[, ", orderby, "])\n")
     # annoc <- annoc[order(annoc[, orderby]), , drop = FALSE] # will follow the factors order
     data.table::setorderv(x = annoc, cols = orderby)
