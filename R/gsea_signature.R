@@ -87,7 +87,7 @@ signature_list_process <- function(
         mylists <- signature_list[tmp]; mynameis <- tvar
         if(verbose) cat(names(mylists), "\n")
       }
-    }; names(mylists) <- paste0(names(mylists), ".score")
+    }#; names(mylists) <- paste0(names(mylists), ".score")
     list_processed[[mynameis]] <- c(list(name = mynameis), mylists)
   }; return(x = list_processed)
 }
