@@ -6,64 +6,107 @@
 
 # This script generates signature scores
 
-# "devel/utilities.R", "devel/plots.R", "R/stats_summary_table.R", "clustering_utilities.R"
+# "R/stats_summary_table.R", "devel/filters.R", "devel/plots.R", "clustering_utilities.R"
+
+
+#' @title Clean feature lists
+#' @description Cleans a list of features based on the percentage or other
+#' summary statistics present in `stats_summary_table`.
+#' @param mat Matrix.
+#' @param features List of features.
+#' @param groups Named (columns in 'mat') vector of groups, Default: NULL.
+#' @param filterby Instructions on how to filter 'moment~value', Default: 'p~0'.
+#' You have the option of adding ~group at the end to filter based on 'groups'.
+#' @param return_stats Whether or not to return summary stats, Default: FALSE.
+#' @param verbose Verbosity, Default: FALSE.
+#' @param ... Extra parameters for `stats_summary_table`.
+#' @return Filtered features list or a list of summary statistics and list of
+#' features.
+#' @examples
+#' \dontrun{
+#'  if(interactive()) features_l <- clean_feature_list(edata, features_list)
+#' }
+#' @rdname clean_feature_list
+#' @export
 
 clean_feature_list <- function(
   mat,
-  features, # list of genes
+  features,
   groups = NULL,
-  filterby = 'p~0', # Moment~[value] (default is p~0) as indicated in `stats_summary_table`. You can include the group name to filter by, p~0~group1.
+  filterby = 'p~0',
   return_stats = FALSE,
   verbose = FALSE,
   ...
 ){
-  if(verbose) cat("\n")
   filterby <- unlist(strsplit(x = filterby, split = "~"))
   if(is.null(groups)){
-    if(verbose) cat("Evaluating globally\n")
-    groups <- rep("SingleCell", ncol(mat)); names(groups) <- colnames(mat)
-    if(is.na(filterby[3])) filterby[3] <- "SingleCell"
+    groups <- setNames(rep("all", ncol(mat)), colnames(mat))
+    if(is.na(filterby[3])) filterby[3] <- "all"
   }
   if(is.na(filterby[3])){
-    filterby[3] <- name(sort(table(groups)))[1]
+    filterby[3] <- names(sort(table(groups)))[1]
     warning("You may want to specify the group. Taking ", filterby[3], ".")
   }
+  str(groups)
   if(verbose) cat("Filtering by", filterby[3], "\n")
-  mygenes <- unique(unlist(features));
+  if(!exists("stats_summary_table"))
+    source(paste0("https://raw.githubusercontent.com/vijaybioinfo/",
+      "handy_functions/master/R/stats_summary_table.R"))
   void <- stats_summary_table(
-    mat = as.matrix(mat[rownames(mat) %in% mygenes, ]),
+    mat = as.matrix(mat[unique(unlist(features)), ]),
     groups = groups,
     moments = filterby[1],
     v = verbose
   ); if(verbose) print(summary(void))
-  passed <- rownames(void)[void[, paste0(filterby[3], moments[filterby[1]])] > as.numeric(filterby[2])]
+  tmp <- void[, paste0(filterby[3], moments[filterby[1]])]
+  passed <- rownames(void)[tmp > as.numeric(filterby[2])]
   if(verbose) str(features)
   features <- sapply(features, function(x) x[x %in% passed], simplify = FALSE)
   if(verbose) str(features)
   if(isTRUE(return_stats)) list(stats = void, list = features) else return(features)
 }
 
-# Previous colours
-# c('#ffdf32', '#ff9a00', '#ff5a00', '#ff5719','#EE0000','#b30000', '#670000')
-# c("#fffeee", "#ffe080", "#ffc100", "#ff4d00", "#ff0000", "#EE0000", "#a10000", "#670000")
-# c("#fffffa", "#fffeee", "#ffe080", "#ffc100", "#ff0000", "#EE0000", "#a10000", "#670000")
+signature_list_process <- function(
+  signature_list, grouping = FALSE, verbose = FALSE
+){
+  list_processed <- list()
+  if(verbose) cat("Getting lists ready\n")
+  for(i in 1:length(signature_list)){
+    mynameis <- names(signature_list[i])
+    tmp <- c(names(list_processed), sapply(list_processed, names))
+    if(mynameis %in% tmp) next
+    if(verbose) cat("@", mynameis, "\n")
+    mylists <- signature_list[i]
+    if(isTRUE(grouping)){
+      # First part of the name can be used to aggregate groups of list
+      # e. g., tcell_treg, tcell_tfh, tcell_tfr
+      tvar <- sub("^([[:alnum:]]{1,})_.*", "\\1", names(signature_list[i]))
+      tmp <- grep(tvar, names(signature_list))
+      if(length(tmp) > 1){
+        if(verbose) cat(" - grouping in ", tvar, ": ", sep = "")
+        mylists <- signature_list[tmp]; mynameis <- tvar
+        if(verbose) cat(names(mylists), "\n")
+      }
+    }; names(mylists) <- paste0(names(mylists), ".score")
+    list_processed[[mynameis]] <- c(list(name = mynameis), mylists)
+  }; return(x = list_processed)
+}
+
 signature_scoring <- function(
   object,
   metadata = NULL,
   prefix = NULL,
-  lsignatures = list(name = "orig.Cell.Cycle", S.Score = cc.genes$s.genes, G2M.Score = cc.genes$g2m.genes),
-  group = FALSE, # group signatures with same name [and description] (NAME_description_source)
+  signature_list = list(name = "Cell.Cycle", S = Seurat::cc.genes$s.genes, G2M = Seurat::cc.genes$g2m.genes),
   confounders = "RNA.*res",
+  grouping = FALSE, # grouping lists into one NAME_description_source
+  plotting = TRUE,
   reductions = list(pca = c('PC_1', 'PC_2'), tsne = c('tSNE_1', 'tSNE_2'), umap = c('UMAP_1', 'UMAP_2')),
   couls = c("#fffffa", "#fffeee", "#ffe080", "#ffc100", "#ff0000", "#EE0000", "#a10000", "#670000"),
   violins_color = "mean",
   verbose = FALSE,
   ...
 ){
-  str_safe_remove <- function(x, word = "random123") gsub("_{1,}", "_", gsub(word, "", x))
-
   if(verbose) cat("-- Signature scoring --\n")
-  prefix <- dircheck(prefix)
   if(verbose) cat("Output:", prefix, "\n")
   if(!is.null(metadata)){
     object <- object[, rownames(metadata)]
@@ -71,50 +114,23 @@ signature_scoring <- function(
   }
 
   if(any(!confounders %in% colnames(object@meta.data))){
-    confounders <- filters_columns(object@meta.data, include = confounders, maxn = 56, v = verbose)
+    confounders <- filters_columns(object@meta.data, confounders, verbose = verbose)
   };
   confounders <- confounders[confounders %in% colnames(object@meta.data)]
-  if(verbose) cat("Confounders", show_commas(confounders), "\n");
+  if(verbose)
+    cat("Confounders:", stringr::str_wrap(paste0(confounders, collapse = ", ")), "\n");
   Idents(object) <- 'orig.ident'
-
-  reductions <- reductions[names(reductions) %in% names(object@reductions)]
-
-  # A list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat.  We can
-  # segregate this list into markers of G2/M phase and markers of S phase
-  signature_list <- list()
-  if(length(lsignatures)){
-    for(i in 1:length(lsignatures)){
-      mynameis <- sub("[[:alnum:]]{1,8}_", "", names(lsignatures[i]))
-      if(verbose && isTRUE(group)) cat("@", mynameis, "\n")
-      if(isTRUE(group)){
-        class_list <- list(
-          lsignatures[grep(mynameis, names(lsignatures))]
-        )
-        names(class_list) <- mynameis
-      }else{
-        class_list <- lsignatures[i]
-        class_list <- lapply(class_list, function(x) x[x %in% rownames(object)] )
-      }
-      tvar <- c(gsub("orig.", "", sapply(signature_list, "[[", 1)), names(signature_list))
-      if(any(names(class_list) %in% tvar)) next
-      # print(sapply(class_list, length))
-      # str(class_list)
-      if(any(sapply(class_list, length) == 0)){
-        warning("'", mynameis, "' has 0 feature value(s)"); next
-      }
-      names(class_list) <- paste0(casefold(str_safe_remove(names(class_list), "signature"), upper = TRUE), ".Score")
-      signature_list <- c(signature_list, list(c(name = paste0("orig.", names(lsignatures[i])), class_list)))
-    }
-  }
+  signature_list_processed <- signature_list_process(signature_list, grouping = grouping)
   signame <- paste0(prefix, "signatures.csv")
   if(file.exists(signame)){
     if(verbose) cat("Pre-computed scores\n")
     signdf <- readfile(signame, stringsAsFactor = FALSE, check.names = FALSE, row.names = 1)
-    object@meta.data <- joindf(object@meta.data, signdf, v = verbose)
+    object@meta.data <- joindf(object@meta.data, signdf)
   }
-  scores_cols <- unname(unlist(sapply(signature_list, function(x) c(names(x)[-1], x[[1]]) )))
-  for(scoring in signature_list){
-    if(verbose) cat("\n@", sub("orig\\.", "", scoring$name), "\n")
+  scores_cols <- unique(unlist(lapply(signature_list_processed,
+    function(x) c(x[[1]], names(x)[-1]) )))
+  for(scoring in signature_list_processed){
+    if(verbose) cat("\n@", scoring$name, "\n")
     check_both <- c(scoring$name, names(scoring[-1])) # check both names
     if(any(!check_both %in% colnames(object@meta.data))){
       object <- ClassifyScoring(
@@ -126,8 +142,11 @@ signature_scoring <- function(
       write.csv(tvar, file = signame)
     }
 
+    if(isFALSE(plotting)) next
     if(verbose) cat("Plotting\n")
-    ddfplot <- FetchData(object, vars = c(scoring$name, names(scoring[-1]), unname(unlist(reductions)), confounders))
+    ddfplot <- Seurat::FetchData(
+      object, vars = c(scoring$name, names(scoring[-1]), unname(unlist(reductions)), confounders)
+    )
     ddfplot$Signature <- as.character(ddfplot[, scoring$name])
     ddfplot$Signature <- ifelse(ddfplot$Signature == "None", "No", "Yes")
     # for(i in names(scoring[-1])) ddfplot[, i] <- scales::rescale(ddfplot[, i], to = c(0, 1))
@@ -136,27 +155,24 @@ signature_scoring <- function(
 
     if(verbose) cat(" # heatmap\n")
     fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring$name)), '_heatmap.pdf')
-    if(!is.file.finished(fname)){
+    if(!(file.exists(fname) && file.size(fname) > 3620)){
       pdf(fname, width = 10, height = 12, onefile = FALSE);
       p <- try(custom_heatmap(
-        object = object, # should be normalised
+        object = object,
         rnames = unname(unlist(scoring[-1])),
         orderby = scoring$name,
-        sample_it = c("orig.ident", '3000'), # can be c("column name", "-num_per_group"); or will use the first column
-        scale_row = TRUE,
+        sample_it = c("orig.ident", '3000'),
         categorical_col = c(confounders, "Signature"),
         feature_order = "pca",
-        couls = NULL, # colors for columns and rows
-        hcouls = c('yellow', 'black', 'blue'),
-        regress = c('nCount_RNA', 'percent.mt'),
-        verbose = FALSE, show_colnames = FALSE
+        verbose = FALSE,
+        show_colnames = FALSE
       ))
       graphics.off()
     }
     for(i in names(reductions)){
       if(verbose) cat(" #", i, "\n")
       fname <- paste0(prefix, gsub("orig\\.", "", casefold(scoring$name)), '_', i, '.pdf')
-      if(is.file.finished(fname)) next
+      if(file.exists(fname) && file.size(fname) > 3620) next
       p <- lapply(names(scoring[-1]), function(x){
         aesy <- aes_string(x = reductions[[i]][1], y = reductions[[i]][2], color = x)
         ggplot(data = ddfplot, mapping = aesy) +
@@ -173,9 +189,7 @@ signature_scoring <- function(
         prefix, gsub("orig\\.", "", casefold(scoring$name)),
         "_violin_", violins_color, "_", confy, '.pdf'
       )
-      if(is.file.finished(fname)) next
-      tvar <- length(table(ddfplot[, confy]))
-      # ddfplot[, confy] <- factormix(ddfplot[, confy])
+      if(file.exists(fname) && file.size(fname) > 3620) next
       p <- violins(
         dat = ddfplot,
         xax = confy,
