@@ -10,9 +10,15 @@
 # using the 1st template from https://github.com/cramirezs/project_structure
 
 PROJECT_NAME="${1}"
-HOST=${USER} # ${2}
+HOST=${USER}
 SMALL_DISC=${HOME} # ${3}
-BIG_DISC=/mnt/BioAdHoc/Groups/vd-vijay # ${4}
+if [[ "${4}" == "" ]]; then
+  if [[ -d "/mnt/BioAdHoc/Groups/vd-vijay" ]]; then
+    BIG_DISC=/mnt/BioAdHoc/Groups/vd-vijay
+  else
+    BIG_DISC=${HOME}
+  fi
+fi
 
 echo ' '
 echo -e "\033[0;32m--- Configuration ---\033[0m"
@@ -27,6 +33,15 @@ if [[ -d "${PROJECT_NAME}" ]]; then
   echo ' '
   exit;
 fi
+
+while true; do
+    read -p "Do you wish to continue with this structure? " yn
+    case $yn in
+        [Yy]* ) break;;
+        [Nn]* ) exit;;
+        * ) echo "Please answer yes or no.";;
+    esac
+done
 
 echo -e "\033[0;32m--- Creating directories ---\033[0m"
 
