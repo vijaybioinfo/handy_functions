@@ -21,6 +21,8 @@ readfile <- function(
   }else if(grepl("h5$|h5$", myfile, ignore.case = TRUE)){
     if(verbose) cat(" - 10X H5\n")
     file_content <- Seurat::Read10X_h5(myfile)
+  }else if(grepl("h5ad$", myfile, ignore.case = TRUE)){
+    file_content <- zellkonverter::readH5AD(myfile)
   }else if(grepl("txt$|tsv$", myfile, ignore.case = TRUE)){
     if(verbose) cat(" - From TXT file\n")
     file_content <- read.table(myfile, ...)
