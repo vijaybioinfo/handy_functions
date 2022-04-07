@@ -295,7 +295,7 @@ supp_table <- function(
         any(grepl(y, x))
       }))
       if(length(tvar) != 1){
-         cat("\n"); cat("Trying to take"); str(tvar); cat("From:"); print(headers2write)
+         cat("\n"); cat("Selected lists"); str(tvar); cat("From:\n"); print(headers2write)
       }; ctype <- names(which(sapply(names(headers[[tail(tvar, 1)]]), grepl, taken)))
       this_header = which(taken_cols %in% taken)
       start_log <- this_header %in% hfeatures && heads[this_header] == "none"
@@ -304,7 +304,7 @@ supp_table <- function(
         tmp <- colnamestype[tvar]
         tmp <- paste0(paste0(names(tmp), "=", tmp), collapse = " and ")
         tmp1 <- paste0(ctype, collapse = " and ")
-        warning("Trying to take ", tmp, "\n  Using: ", tmp1,
+        warning("Trying to take '", tmp, "'\n  Using: ", tmp1,
           "\n  Patterns should be unique; using last match")
       }
       formats = list(
