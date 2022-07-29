@@ -23,6 +23,11 @@ DIR_REMOTE=${3:-/lustre/home/icb/${USERNAME}}
 DIR_LOCAL=${4:-/Volumes/drive_hzm}
 REMNAME=${USERNAME}@${HNAME}:${DIR_REMOTE}
 
+echo "User: ${USERNAME}"
+echo "Host: ${HNAME}"
+echo "Remote: ${DIR_REMOTE}"
+echo "Local: ${DIR_LOCAL}"
+
 ls -hola /Volumes
 # if [[ ! -z "$(ls -A ${DIR_LOCAL})" ]]; then
 if [[ -d ${DIR_LOCAL} ]]; then
