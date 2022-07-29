@@ -40,3 +40,6 @@ if [[ -d ${DIRNAME} ]]; then
   echo "\033[0;32mContent:\033[0m"
   ls -hol ${DIRNAME}/;
 fi
+
+# If the mounted unit becomes non-responsive:
+# `ps -ef` and `pkill <sshfs process id>`
