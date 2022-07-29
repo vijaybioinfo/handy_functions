@@ -17,28 +17,30 @@ else
 fi
 
 echo "Might need to write your local password"
-USERNAME=ciro.suastegui
-DIRNAME=/Volumes/mdrive
-REMNAME=${USERNAME}@vicb-submit-02:/home/icb/${USERNAME}
+USERNAME=${1:-ciro.suastegui}
+HNAME=${2:-hpc-submit01}
+DIR_REMOTE=${3:-/lustre/home/icb/${USERNAME}}
+DIR_LOCAL=${4:-/Volumes/drive_hzm}
+REMNAME=${USERNAME}@${HNAME}:${DIR_REMOTE}
 
 ls -hola /Volumes
-# if [[ ! -z "$(ls -A ${DIRNAME})" ]]; then
-if [[ -d ${DIRNAME} ]]; then
+# if [[ ! -z "$(ls -A ${DIR_LOCAL})" ]]; then
+if [[ -d ${DIR_LOCAL} ]]; then
   echo "\033[0;31mMounted\033[0m, or dir exists, would you like to unmount (y/n)?"
   read -p "" choice
   case "$choice" in
-    y|Y ) sudo umount ${DIRNAME};;
+    y|Y ) sudo umount ${DIR_LOCAL};;
     n|N ) echo "\033[0;34mCool\033[0m";;
     * ) echo "invalid";;
   esac
 else
-  sudo mkdir -p ${DIRNAME}
+  sudo mkdir -p ${DIR_LOCAL}
   echo "\033[0;32mWrite your remote password\033[0m"
-  sudo sshfs -o allow_other,default_permissions ${REMNAME} ${DIRNAME}
+  sudo sshfs -o allow_other,default_permissions ${REMNAME} ${DIR_LOCAL}
 fi
-if [[ -d ${DIRNAME} ]]; then
+if [[ -d ${DIR_LOCAL} ]]; then
   echo "\033[0;32mContent:\033[0m"
-  ls -hol ${DIRNAME}/;
+  ls -hol ${DIR_LOCAL}/;
 fi
 
 # If the mounted unit becomes non-responsive:
