@@ -19,7 +19,7 @@ fi
 echo "Might need to write your local password"
 USERNAME=${1:-ciro.suastegui}
 HNAME=${2:-hpc-submit01}
-DIR_REMOTE=${3:-/lustre/home/icb/${USERNAME}}
+DIR_REMOTE=${3:-/home/icb/${USERNAME}}
 DIR_LOCAL=${4:-/Volumes/drive_hzm}
 REMNAME=${USERNAME}@${HNAME}:${DIR_REMOTE}
 
