@@ -41,7 +41,7 @@ if [[ -d ${DIR_LOCAL} ]]; then
 else
   sudo mkdir -p ${DIR_LOCAL}
   echo "\033[0;32mWrite your remote password\033[0m"
-  sudo sshfs -o allow_other,default_permissions ${REMNAME} ${DIR_LOCAL}
+  sudo sshfs -o allow_other,default_permissions,umask=0022 ${REMNAME} ${DIR_LOCAL}
 fi
 if [[ -d ${DIR_LOCAL} ]]; then
   echo "\033[0;32mContent:\033[0m"
