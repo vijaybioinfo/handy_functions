@@ -87,6 +87,20 @@ filters_complex <- meta_filtering <- function(
     }
   }
 
+  # For merged comparisons
+  for (filter_i in filters){
+    for (grp_i in filter_i){
+      if (!any(grepl(sepchar, grp_i))) next
+      if (verbose) cat("Merging", grp_i, "within", filter_i[1], "\n")
+      grp_i_replacement <- names(filter_i[which(filter_i == grp_i)])
+      if (is.null(grp_i_replacement)) grp_i_replacement <- grp_i
+      # will find complete names ^NAME$
+      mdata[, filter_i[1]] <- sub(
+        paste0(paste0("^", strsplit(grp_i, sepchar)[[1]], "$"), collapse = "|"),
+        grp_i_replacement, mdata[, filter_i[1]])
+    }
+  }
+
   ## Based on a list ## --------------------------------------------------------
   # watch out for 'cname' column samples/cells by table(cname, column_filtering_by)
   if(verbose) cat("Filtering:")
